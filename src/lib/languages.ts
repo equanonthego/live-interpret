@@ -1,0 +1,112 @@
+/**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+export interface Language {
+  code: string;
+  name: string;
+  flag: string;
+}
+
+export const SUPPORTED_LANGUAGES: Language[] = [
+  { code: "af", name: "Afrikaans", flag: "🇿🇦" },
+  { code: "ak", name: "Akan", flag: "🇬🇭" },
+  { code: "sq", name: "Albanian", flag: "🇦🇱" },
+  { code: "am", name: "Amharic", flag: "🇪🇹" },
+  { code: "ar", name: "Arabic", flag: "🇸🇦" },
+  { code: "hy", name: "Armenian", flag: "🇦🇲" },
+  { code: "az", name: "Azerbaijani", flag: "🇦🇿" },
+  { code: "eu", name: "Basque", flag: "🇪🇺" },
+  { code: "be", name: "Belarusian", flag: "🇧🇾" },
+  { code: "bn", name: "Bengali", flag: "🇧🇩" },
+  { code: "bg", name: "Bulgarian", flag: "🇧🇬" },
+  { code: "my", name: "Burmese (Myanmar)", flag: "🇲🇲" },
+  { code: "ca", name: "Catalan", flag: "🇪🇺" },
+  { code: "zh-Hans", name: "Chinese (Simplified)", flag: "🇨🇳" },
+  { code: "zh-Hant", name: "Chinese (Traditional)", flag: "🇭🇰" },
+  { code: "hr", name: "Croatian", flag: "🇭🇷" },
+  { code: "cs", name: "Czech", flag: "🇨🇿" },
+  { code: "da", name: "Danish", flag: "🇩🇰" },
+  { code: "nl", name: "Dutch", flag: "🇳🇱" },
+  { code: "en", name: "English", flag: "🇺🇸" },
+  { code: "et", name: "Estonian", flag: "🇪🇪" },
+  { code: "fil", name: "Filipino", flag: "🇵🇭" },
+  { code: "fi", name: "Finnish", flag: "🇫🇮" },
+  { code: "fr", name: "French", flag: "🇫🇷" },
+  { code: "gl", name: "Galician", flag: "🇪🇺" },
+  { code: "ka", name: "Georgian", flag: "🇬🇪" },
+  { code: "de", name: "German", flag: "🇩🇪" },
+  { code: "el", name: "Greek", flag: "🇬🇷" },
+  { code: "gu", name: "Gujarati", flag: "🇮🇳" },
+  { code: "ha", name: "Hausa", flag: "🇳🇬" },
+  { code: "he", name: "Hebrew", flag: "🇮🇱" },
+  { code: "hi", name: "Hindi", flag: "🇮🇳" },
+  { code: "hu", name: "Hungarian", flag: "🇭🇺" },
+  { code: "is", name: "Icelandic", flag: "🇮🇸" },
+  { code: "id", name: "Indonesian", flag: "🇮🇩" },
+  { code: "it", name: "Italian", flag: "🇮🇹" },
+  { code: "ja", name: "Japanese", flag: "🇯🇵" },
+  { code: "jv", name: "Javanese", flag: "🇮🇩" },
+  { code: "kn", name: "Kannada", flag: "🇮🇳" },
+  { code: "kk", name: "Kazakh", flag: "🇰🇿" },
+  { code: "km", name: "Khmer", flag: "🇰🇭" },
+  { code: "rw", name: "Kinyarwanda", flag: "🇷🇼" },
+  { code: "ko", name: "Korean", flag: "🇰🇷" },
+  { code: "lo", name: "Lao", flag: "🇱🇦" },
+  { code: "lv", name: "Latvian", flag: "🇱🇻" },
+  { code: "lt", name: "Lithuanian", flag: "🇱🇹" },
+  { code: "mk", name: "Macedonian", flag: "🇲🇰" },
+  { code: "ms", name: "Malay", flag: "🇲🇾" },
+  { code: "ml", name: "Malayalam", flag: "🇮🇳" },
+  { code: "mr", name: "Marathi", flag: "🇮🇳" },
+  { code: "mn", name: "Mongolian", flag: "🇲🇳" },
+  { code: "ne", name: "Nepali", flag: "🇳🇵" },
+  { code: "no", name: "Norwegian", flag: "🇳🇴" },
+  { code: "fa", name: "Persian", flag: "🇮🇷" },
+  { code: "pl", name: "Polish", flag: "🇵🇱" },
+  { code: "pt-BR", name: "Portuguese (Brazil)", flag: "🇧🇷" },
+  { code: "pt-PT", name: "Portuguese (Portugal)", flag: "🇵🇹" },
+  { code: "pa", name: "Punjabi", flag: "🇮🇳" },
+  { code: "ro", name: "Romanian", flag: "🇷🇴" },
+  { code: "ru", name: "Russian", flag: "🇷🇺" },
+  { code: "sr", name: "Serbian", flag: "🇷🇸" },
+  { code: "sd", name: "Sindhi", flag: "🇵🇰" },
+  { code: "si", name: "Sinhala", flag: "🇱🇰" },
+  { code: "sk", name: "Slovak", flag: "🇸🇰" },
+  { code: "sl", name: "Slovenian", flag: "🇸🇮" },
+  { code: "es", name: "Spanish", flag: "🇪🇸" },
+  { code: "su", name: "Sundanese", flag: "🇮🇩" },
+  { code: "sw", name: "Swahili", flag: "🇰🇪" },
+  { code: "sv", name: "Swedish", flag: "🇸🇪" },
+  { code: "ta", name: "Tamil", flag: "🇮🇳" },
+  { code: "te", name: "Telugu", flag: "🇮🇳" },
+  { code: "th", name: "Thai", flag: "🇹🇭" },
+  { code: "tr", name: "Turkish", flag: "🇹🇷" },
+  { code: "uk", name: "Ukrainian", flag: "🇺🇦" },
+  { code: "ur", name: "Urdu", flag: "🇵🇰" },
+  { code: "uz", name: "Uzbek", flag: "🇺🇿" },
+  { code: "vi", name: "Vietnamese", flag: "🇻🇳" },
+  { code: "zu", name: "Zulu", flag: "🇿🇦" },
+];
+
+export function getLanguageByCode(code: string): Language | undefined {
+  const normalized =
+    code === "nb" ? "no" :
+    code === "iw" ? "he" :
+    code === "zh" ? "zh-Hans" :
+    code === "pt" ? "pt-BR" :
+    code;
+  return SUPPORTED_LANGUAGES.find((lang) => lang.code === normalized);
+}

@@ -1,0 +1,112 @@
+/**
+ * Copyright 2026 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import TranslationSessionManager from "@/lib/translation-session-manager";
+
+// POST /api/translate — Request a translation stream for a language
+export async function POST(req: NextRequest) {
+  try {
+    const { sessionId, targetLanguage, previousLanguage } = await req.json();
+
+    if (!sessionId || !targetLanguage) {
+      return NextResponse.json(
+        { error: "Missing sessionId or targetLanguage" },
+        { status: 400 }
+      );
+    }
+
+    const manager = TranslationSessionManager.getInstance();
+    const session = manager.getSession(sessionId);
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Session not found" },
+        { status: 404 }
+      );
+    }
+
+    // Validate targetLanguage against allowedLanguages allowlist
+    if (
+      targetLanguage !== "original" &&
+      session.allowedLanguages &&
+      !session.allowedLanguages.includes(targetLanguage)
+    ) {
+      return NextResponse.json(
+        { error: `Language "${targetLanguage}" is not allowed for this session` },
+        { status: 400 }
+      );
+    }
+
+    // Unsubscribe from the previous language if switching
+    if (previousLanguage && previousLanguage !== "original") {
+      await manager.unsubscribe(sessionId, previousLanguage);
+    }
+
+    // Skip translation for the original language (no bridge needed)
+    if (targetLanguage === "original") {
+      return NextResponse.json({
+        translatorIdentity: null,
+        status: "original",
+        message: "Using original audio",
+      });
+    }
+
+    // Get or create the translation bridge
+    const bridge = await manager.getOrCreate(
+      sessionId,
+      targetLanguage,
+      session.organizerIdentity
+    );
+
+    return NextResponse.json({
+      translatorIdentity: bridge.identity,
+      status: bridge.status,
+      targetLanguage: bridge.targetLanguage,
+    });
+  } catch (error) {
+    console.error("Error requesting translation:", error);
+    return NextResponse.json(
+      { error: "Failed to start translation: " + (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/translate — Unsubscribe from a translation (e.g. on disconnect)
+export async function DELETE(req: NextRequest) {
+  try {
+    const { sessionId, targetLanguage } = await req.json();
+
+    if (!sessionId || !targetLanguage) {
+      return NextResponse.json(
+        { error: "Missing sessionId or targetLanguage" },
+        { status: 400 }
+      );
+    }
+
+    const manager = TranslationSessionManager.getInstance();
+    await manager.unsubscribe(sessionId, targetLanguage);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error unsubscribing:", error);
+    return NextResponse.json(
+      { error: "Failed to unsubscribe" },
+      { status: 500 }
+    );
+  }
+}
