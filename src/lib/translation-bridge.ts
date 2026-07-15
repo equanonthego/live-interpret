@@ -77,14 +77,14 @@ export class TranslationBridge {
   private readonly livekitApiSecret: string;
 
   private geminiSetupComplete: boolean = false;
-  private organizerIdentity: string;
+  private sourceIdentity: string;
   private lastAudioFrameTime: number = 0;
   private captureChain: Promise<void> = Promise.resolve();
 
   constructor(
     sessionId: string,
     targetLanguage: string,
-    organizerIdentity: string,
+    sourceIdentity: string,
     config: {
       geminiApiKey: string;
       livekitUrl: string;
@@ -94,7 +94,7 @@ export class TranslationBridge {
   ) {
     this.sessionId = sessionId;
     this.targetLanguage = targetLanguage;
-    this.organizerIdentity = organizerIdentity;
+    this.sourceIdentity = sourceIdentity;
     this.identity = `translator-${targetLanguage}`;
     this.geminiApiKey = config.geminiApiKey;
     this.livekitUrl = config.livekitUrl;
@@ -193,9 +193,9 @@ export class TranslationBridge {
     this.room.on(
       RoomEvent.ParticipantDisconnected,
       (participant: RemoteParticipant) => {
-        if (participant.identity === this.organizerIdentity) {
+        if (participant.identity === this.sourceIdentity) {
           console.log(
-            `[TranslationBridge:${this.targetLanguage}] Organizer ${this.organizerIdentity} disconnected, stopping bridge`
+            `[TranslationBridge:${this.targetLanguage}] Source speaker ${this.sourceIdentity} disconnected, stopping bridge`
           );
           this.stop().catch((err) => {
             console.error(
@@ -611,18 +611,18 @@ export class TranslationBridge {
     const participants = this.room.remoteParticipants;
 
     for (const [, participant] of participants) {
-      if (participant.identity === this.organizerIdentity) {
+      if (participant.identity === this.sourceIdentity) {
         this.subscribeToParticipantAudio(participant);
         return;
       }
     }
 
-    // If organizer hasn't joined yet, wait for them
+    // If the source speaker hasn't joined yet, wait for them
     console.log(
-      `[TranslationBridge:${this.targetLanguage}] Waiting for organizer ${this.organizerIdentity}...`
+      `[TranslationBridge:${this.targetLanguage}] Waiting for source speaker ${this.sourceIdentity}...`
     );
 
-    // Listen for the organizer to publish their track
+    // Listen for the source speaker to publish their track
     this.room.on(
       RoomEvent.TrackPublished,
       (
@@ -630,7 +630,7 @@ export class TranslationBridge {
         participant: RemoteParticipant
       ) => {
         if (
-          participant.identity === this.organizerIdentity &&
+          participant.identity === this.sourceIdentity &&
           publication.kind === TrackKind.KIND_AUDIO
         ) {
           publication.setSubscribed(true);
@@ -647,7 +647,7 @@ export class TranslationBridge {
         participant: RemoteParticipant
       ) => {
         if (
-          participant.identity === this.organizerIdentity &&
+          participant.identity === this.sourceIdentity &&
           publication.kind === TrackKind.KIND_AUDIO
         ) {
           this.pipeTrackToGemini(track);
@@ -678,7 +678,7 @@ export class TranslationBridge {
         p: RemoteParticipant
       ) => {
         if (
-          p.identity === this.organizerIdentity &&
+          p.identity === this.sourceIdentity &&
           pub.kind === TrackKind.KIND_AUDIO
         ) {
           this.pipeTrackToGemini(track);
