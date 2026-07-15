@@ -41,3 +41,5 @@ yarn-error.log*
 next-env.d.ts
 
 cleanup-rooms.js
+# 템플릿은 커밋 허용
+!.env.example
