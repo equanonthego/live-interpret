@@ -33,7 +33,8 @@ function localIPv4Origins(): string[] {
 const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["@livekit/rtc-node", "ws"],
-  allowedDevOrigins: localIPv4Origins(),
+  // LAN IP + cloudflared 터널 도메인(개발용 HTTPS 테스트)에서의 dev 접근 허용.
+  allowedDevOrigins: [...localIPv4Origins(), "*.trycloudflare.com"],
 };
 
 export default nextConfig;
