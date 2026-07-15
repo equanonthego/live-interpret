@@ -76,9 +76,12 @@ export async function GET(req: NextRequest) {
   at.addGrant({
     roomJoin: true,
     room,
-    canPublish: isOrganizer,
+    // 청자도 canPublish=true로 발급한다. 실제 마이크 발행은 발언권(floor
+    // grant) 신호를 받은 청자만 클라이언트 UI에서 수행하도록 게이트한다
+    // (서버 강제 권한은 범위 밖 — docs/specs/2026-07-15-floor-passing-qa-design.md).
+    canPublish: true,
     canSubscribe: true,
-    canPublishData: isOrganizer,
+    canPublishData: true,
     canUpdateOwnMetadata: true,
   });
 
