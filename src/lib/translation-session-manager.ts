@@ -32,11 +32,26 @@ export interface TranslationInfo {
   subscriberCount: number;
 }
 
+export interface HandRaise {
+  identity: string;
+  name?: string;
+  language: string;
+}
+
 export interface SessionInfo {
   sessionId: string;
   organizerIdentity: string;
   createdAt: Date;
   allowedLanguages?: string[];
+  // 발언권을 쥔 청자 identity. 없으면(undefined) 강의자만 발언 중.
+  currentSpeaker?: string;
+  // 손든 청자 대기열 (순서대로).
+  handRaised: HandRaise[];
+}
+
+export interface FloorState {
+  currentSpeaker?: string;
+  handRaised: HandRaise[];
 }
 
 const globalForSessionManager = global as unknown as {
@@ -49,6 +64,9 @@ class TranslationSessionManager {
 
   // Map<sessionId, SessionInfo>
   private sessions: Map<string, SessionInfo> = new Map();
+
+  // Map<sessionId, TranslationBridge> — 질문자 언어 → ko. 질문하는 동안에만 존재.
+  private questionBridges: Map<string, TranslationBridge> = new Map();
 
   private constructor() {}
 
@@ -70,6 +88,7 @@ class TranslationSessionManager {
       organizerIdentity,
       createdAt: new Date(),
       allowedLanguages,
+      handRaised: [],
     };
     this.sessions.set(sessionId, info);
     console.log(`[SessionManager] Created session ${sessionId} for organizer ${organizerIdentity} with allowed languages: ${allowedLanguages?.join(", ") || "all"}`);
@@ -78,6 +97,35 @@ class TranslationSessionManager {
 
   getSession(sessionId: string): SessionInfo | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  // Floor control (발언권 이양) ---------------------------------------
+
+  getFloorState(sessionId: string): FloorState {
+    const session = this.sessions.get(sessionId);
+    return {
+      currentSpeaker: session?.currentSpeaker,
+      handRaised: session?.handRaised ?? [],
+    };
+  }
+
+  raiseHand(sessionId: string, entry: HandRaise): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    if (session.handRaised.some((h) => h.identity === entry.identity)) return;
+    session.handRaised.push(entry);
+  }
+
+  lowerHand(sessionId: string, identity: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.handRaised = session.handRaised.filter((h) => h.identity !== identity);
+  }
+
+  setSpeaker(sessionId: string, identity: string | null): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.currentSpeaker = identity ?? undefined;
   }
 
   // Translation management
@@ -157,6 +205,56 @@ class TranslationSessionManager {
     }
   }
 
+  // Question bridge (질문자 언어 → ko) --------------------------------
+
+  /**
+   * 발언권을 받은 청자(questionerIdentity)의 오디오를 한국어로 통역하는
+   * 브릿지를 세션당 1개 띄운다. 질문하는 동안에만 존재하고, stopQuestionBridge로
+   * 종료된다. 일반 언어별 브릿지(translations map)와는 별도로 관리한다 —
+   * targetLanguage가 항상 "ko"이고 source가 강의자가 아니라 질문자이기 때문.
+   */
+  async startQuestionBridge(
+    sessionId: string,
+    questionerIdentity: string
+  ): Promise<TranslationBridge> {
+    const existing = this.questionBridges.get(sessionId);
+    if (existing) {
+      await existing.stop();
+      this.questionBridges.delete(sessionId);
+    }
+
+    const config = {
+      geminiApiKey: process.env.GEMINI_API_KEY!,
+      livekitUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
+      livekitApiKey: process.env.LIVEKIT_API_KEY!,
+      livekitApiSecret: process.env.LIVEKIT_API_SECRET!,
+    };
+
+    const bridge = new TranslationBridge(sessionId, "ko", questionerIdentity, config);
+    bridge.onStop = () => {
+      if (this.questionBridges.get(sessionId) === bridge) {
+        this.questionBridges.delete(sessionId);
+      }
+    };
+
+    this.questionBridges.set(sessionId, bridge);
+    try {
+      await bridge.start();
+      bridge.subscriberCount = 1;
+      return bridge;
+    } catch (error) {
+      this.questionBridges.delete(sessionId);
+      throw error;
+    }
+  }
+
+  async stopQuestionBridge(sessionId: string): Promise<void> {
+    const bridge = this.questionBridges.get(sessionId);
+    if (!bridge) return;
+    await bridge.stop();
+    this.questionBridges.delete(sessionId);
+  }
+
   getActiveTranslations(sessionId: string): TranslationInfo[] {
     const languageMap = this.translations.get(sessionId);
     if (!languageMap) return [];
@@ -232,6 +330,7 @@ class TranslationSessionManager {
       languageMap.clear();
       this.translations.delete(sessionId);
     }
+    await this.stopQuestionBridge(sessionId);
     this.sessions.delete(sessionId);
     console.log(
       `[SessionManager] Removed all bridges and session for ${sessionId}`
