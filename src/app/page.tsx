@@ -155,13 +155,37 @@ export default function Home() {
                 className="btn btn-outline"
                 onClick={testGeminiKey}
                 disabled={!geminiApiKey.trim() || keyStatus === "testing"}
-                style={{ padding: "6px 14px", fontSize: 13 }}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
               >
                 {keyStatus === "testing" ? "확인 중…" : "연결 테스트"}
+                <span
+                  aria-label={
+                    keyStatus === "ok" ? "연결됨" : keyStatus === "fail" ? "연결 실패" : "연결 안 됨"
+                  }
+                  title={
+                    keyStatus === "ok" ? "연결됨" : keyStatus === "fail" ? "연결 실패" : "연결 안 됨"
+                  }
+                  style={{
+                    display: "inline-block",
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background:
+                      keyStatus === "ok"
+                        ? "var(--accent)"
+                        : keyStatus === "fail"
+                        ? "var(--error)"
+                        : "var(--fg)",
+                    flexShrink: 0,
+                  }}
+                />
               </button>
-              {keyStatus === "ok" && (
-                <span style={{ color: "var(--success)", fontSize: 13 }}>✓ 연결됨</span>
-              )}
               {keyStatus === "fail" && (
                 <span style={{ color: "var(--error)", fontSize: 13 }}>{keyError}</span>
               )}
