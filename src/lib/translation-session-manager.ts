@@ -24,6 +24,7 @@
  */
 
 import { TranslationBridge, BridgeStatus } from "./translation-bridge";
+import { SOURCE_LANGUAGE } from "./interpret-config";
 
 export interface TranslationInfo {
   language: string;
@@ -62,6 +63,10 @@ class TranslationSessionManager {
   // Map<sessionId, Map<languageCode, TranslationBridge>>
   private translations: Map<string, Map<string, TranslationBridge>> = new Map();
 
+  // Map<sessionId, TranslationBridge> — one host-caption (transcribe-only)
+  // bridge per session, kept separate so it never appears in attendee lists.
+  private hostTranscriptions: Map<string, TranslationBridge> = new Map();
+
   // Map<sessionId, SessionInfo>
   private sessions: Map<string, SessionInfo> = new Map();
 
@@ -75,6 +80,15 @@ class TranslationSessionManager {
       globalForSessionManager.sessionManagerInstance = new TranslationSessionManager();
     }
     return globalForSessionManager.sessionManagerInstance;
+  }
+
+  private buildBridgeConfig() {
+    return {
+      geminiApiKey: process.env.GEMINI_API_KEY!,
+      livekitUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
+      livekitApiKey: process.env.LIVEKIT_API_KEY!,
+      livekitApiSecret: process.env.LIVEKIT_API_SECRET!,
+    };
   }
 
   // Session management
@@ -134,6 +148,17 @@ class TranslationSessionManager {
     targetLanguage: string,
     organizerIdentity: string
   ): Promise<TranslationBridge> {
+    // SOURCE_LANGUAGE is reserved for the host-caption bridge (see
+    // getOrCreateHostTranscription) — an attendee-facing bridge targeting the
+    // same language would collide with it on destination routing and segment
+    // ids. This must hold regardless of what DEFAULT_INTERPRET_LANGUAGES or a
+    // session's allowedLanguages happen to contain.
+    if (targetLanguage === SOURCE_LANGUAGE) {
+      throw new Error(
+        `Cannot create an attendee translation bridge for "${SOURCE_LANGUAGE}" — reserved for host transcription`
+      );
+    }
+
     // Check if we already have a bridge for this language
     let languageMap = this.translations.get(sessionId);
     if (languageMap) {
@@ -160,18 +185,11 @@ class TranslationSessionManager {
       `[SessionManager] Creating new bridge for ${targetLanguage} in session ${sessionId}`
     );
 
-    const config = {
-      geminiApiKey: process.env.GEMINI_API_KEY!,
-      livekitUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
-      livekitApiKey: process.env.LIVEKIT_API_KEY!,
-      livekitApiSecret: process.env.LIVEKIT_API_SECRET!,
-    };
-
     const bridge = new TranslationBridge(
       sessionId,
       targetLanguage,
       organizerIdentity,
-      config
+      this.buildBridgeConfig()
     );
 
     bridge.onStop = () => {
@@ -223,14 +241,12 @@ class TranslationSessionManager {
       this.questionBridges.delete(sessionId);
     }
 
-    const config = {
-      geminiApiKey: process.env.GEMINI_API_KEY!,
-      livekitUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
-      livekitApiKey: process.env.LIVEKIT_API_KEY!,
-      livekitApiSecret: process.env.LIVEKIT_API_SECRET!,
-    };
-
-    const bridge = new TranslationBridge(sessionId, "ko", questionerIdentity, config);
+    const bridge = new TranslationBridge(
+      sessionId,
+      "ko",
+      questionerIdentity,
+      this.buildBridgeConfig()
+    );
     bridge.onStop = () => {
       if (this.questionBridges.get(sessionId) === bridge) {
         this.questionBridges.delete(sessionId);
@@ -253,6 +269,74 @@ class TranslationSessionManager {
     if (!bridge) return;
     await bridge.stop();
     this.questionBridges.delete(sessionId);
+  }
+
+  /**
+   * Start (or reuse) the host-caption bridge for a session. This transcribes
+   * the organizer's own speech (SOURCE_LANGUAGE) and streams it back to them as
+   * text, without publishing any translated audio track. Independent of the
+   * attendee translation bridges.
+   */
+  async getOrCreateHostTranscription(
+    sessionId: string
+  ): Promise<TranslationBridge> {
+    const existing = this.hostTranscriptions.get(sessionId);
+    // "starting" must be treated as reusable too — otherwise two overlapping
+    // calls (e.g. a React effect re-running before the first bridge.start()
+    // resolves) each fall through and create a second bridge, orphaning the
+    // first (leaked LiveKit connection + Gemini session, never stopped).
+    if (existing && (existing.status === "active" || existing.status === "starting")) {
+      return existing;
+    }
+    if (existing && (existing.status === "error" || existing.status === "closed")) {
+      await existing.stop();
+      this.hostTranscriptions.delete(sessionId);
+    }
+
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+
+    console.log(
+      `[SessionManager] Creating host-caption bridge for session ${sessionId}`
+    );
+
+    const bridge = new TranslationBridge(
+      sessionId,
+      SOURCE_LANGUAGE,
+      session.organizerIdentity,
+      this.buildBridgeConfig(),
+      true // transcribeOnly
+    );
+
+    bridge.onStop = () => {
+      const current = this.hostTranscriptions.get(sessionId);
+      if (current === bridge) {
+        this.hostTranscriptions.delete(sessionId);
+      }
+    };
+
+    this.hostTranscriptions.set(sessionId, bridge);
+
+    try {
+      await bridge.start();
+      return bridge;
+    } catch (error) {
+      this.hostTranscriptions.delete(sessionId);
+      throw error;
+    }
+  }
+
+  async stopHostTranscription(sessionId: string): Promise<void> {
+    const bridge = this.hostTranscriptions.get(sessionId);
+    if (bridge) {
+      await bridge.stop();
+      this.hostTranscriptions.delete(sessionId);
+      console.log(
+        `[SessionManager] Stopped host-caption bridge for session ${sessionId}`
+      );
+    }
   }
 
   getActiveTranslations(sessionId: string): TranslationInfo[] {
@@ -331,6 +415,7 @@ class TranslationSessionManager {
       this.translations.delete(sessionId);
     }
     await this.stopQuestionBridge(sessionId);
+    await this.stopHostTranscription(sessionId);
     this.sessions.delete(sessionId);
     console.log(
       `[SessionManager] Removed all bridges and session for ${sessionId}`

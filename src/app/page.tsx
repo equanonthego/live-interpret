@@ -18,7 +18,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { SUPPORTED_LANGUAGES } from "@/lib/languages";
 import { DEFAULT_INTERPRET_LANGUAGES } from "@/lib/interpret-config";
 
 export default function Home() {
@@ -28,15 +27,6 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [eventId, setEventId] = useState("");
   const [error, setError] = useState<string | null>(null);
-  
-  const [restrictLanguages, setRestrictLanguages] = useState(true);
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(DEFAULT_INTERPRET_LANGUAGES);
-  const [langSearch, setLangSearch] = useState("");
-
-  const filteredLanguages = SUPPORTED_LANGUAGES.filter(lang => 
-    lang.name.toLowerCase().includes(langSearch.toLowerCase()) ||
-    lang.code.toLowerCase().includes(langSearch.toLowerCase())
-  );
 
   useEffect(() => {
     async function checkAuthStatus() {
@@ -58,11 +48,11 @@ export default function Home() {
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          organizerName: "host", 
-          password, 
+        body: JSON.stringify({
+          organizerName: "host",
+          password,
           eventId,
-          allowedLanguages: restrictLanguages ? selectedLanguages : undefined
+          allowedLanguages: DEFAULT_INTERPRET_LANGUAGES,
         }),
       });
       const data = await res.json();
@@ -91,10 +81,10 @@ export default function Home() {
         {/* Subtitle */}
         <p
           className="body enter-d1"
-          style={{ maxWidth: 340, margin: "0 auto 48px" }}
+          style={{ maxWidth: 360, margin: "0 auto 48px" }}
         >
-          Broadcast your voice. Attendees choose their language.
-          Translation spins up on demand.
+          당신의 목소리를 송출하세요. 청중은 각자 언어를 고르고,
+          번역은 필요할 때 실시간으로 시작됩니다.
         </p>
 
         {/* Inputs */}
@@ -112,7 +102,7 @@ export default function Home() {
             <input
               type="password"
               className="input-field"
-              placeholder="Enter broadcast password"
+              placeholder="방송 비밀번호 입력"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               style={{ textAlign: "center" }}
@@ -122,134 +112,13 @@ export default function Home() {
           <input
             type="text"
             className="input-field"
-            placeholder="Event ID (optional, e.g. weekly-sync)"
+            placeholder="이벤트 ID (선택, 예: weekly-sync)"
             value={eventId}
             onChange={(e) => setEventId(e.target.value)}
             style={{ textAlign: "center" }}
             disabled={loading}
           />
 
-          {/* Allowlisting control */}
-          <div style={{ textAlign: "left", marginTop: 8 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "13px", color: "var(--fg-secondary)" }}>
-              <input
-                type="checkbox"
-                checked={restrictLanguages}
-                onChange={(e) => {
-                  setRestrictLanguages(e.target.checked);
-                }}
-                style={{ accentColor: "var(--fg)", cursor: "pointer" }}
-              />
-              Restrict attendee languages
-            </label>
-
-            {restrictLanguages && (
-              <div className="enter" style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                {/* Chip container to show selected languages at a glance */}
-                {selectedLanguages.length > 0 && (
-                  <div style={{ 
-                    display: "flex", 
-                    flexWrap: "wrap", 
-                    gap: "6px", 
-                    marginBottom: "4px",
-                    padding: "8px",
-                    border: "1px dashed var(--border)",
-                    background: "var(--bg-elevated)" 
-                  }}>
-                    {selectedLanguages.map((code) => {
-                      const lang = SUPPORTED_LANGUAGES.find((l) => l.code === code);
-                      if (!lang) return null;
-                      return (
-                        <div
-                          key={code}
-                          onClick={() => setSelectedLanguages((prev) => prev.filter((c) => c !== code))}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            background: "var(--bg)",
-                            border: "1px solid var(--border)",
-                            padding: "3px 6px",
-                            fontSize: "11px",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                          title="Click to remove"
-                        >
-                          <span>{lang.flag}</span>
-                          <span style={{ color: "var(--fg-secondary)" }}>{lang.name}</span>
-                          <span style={{ marginLeft: "2px", opacity: 0.5, fontWeight: "bold" }}>×</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <input
-                  type="text"
-                  placeholder="Search languages..."
-                  className="input-field"
-                  value={langSearch}
-                  onChange={(e) => setLangSearch(e.target.value)}
-                  style={{ padding: "8px 12px", fontSize: "13px" }}
-                />
-                
-                <div style={{ 
-                  maxHeight: "130px", 
-                  overflowY: "auto", 
-                  border: "1px solid var(--border)", 
-                  padding: "8px", 
-                  background: "var(--bg-elevated)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6
-                }}>
-                  {filteredLanguages.length === 0 ? (
-                    <span style={{ fontSize: "12px", color: "var(--fg-tertiary)" }}>No languages found</span>
-                  ) : (
-                    filteredLanguages.map(lang => {
-                      const isChecked = selectedLanguages.includes(lang.code);
-                      return (
-                        <label key={lang.code} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: "13px" }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              setSelectedLanguages(prev => 
-                                isChecked ? prev.filter(c => c !== lang.code) : [...prev, lang.code]
-                              );
-                            }}
-                            style={{ accentColor: "var(--fg)" }}
-                          />
-                          <span>{lang.flag} {lang.name}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-                
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--fg-tertiary)" }}>
-                  <span>{selectedLanguages.length} selected</span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedLanguages(SUPPORTED_LANGUAGES.map(l => l.code))}
-                      style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", textDecoration: "underline" }}
-                    >
-                      Select all
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedLanguages([])}
-                      style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", textDecoration: "underline" }}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Error message */}
@@ -269,10 +138,10 @@ export default function Home() {
           >
             {loading ? (
               <>
-                <span className="spinner" /> Creating…
+                <span className="spinner" /> 생성 중…
               </>
             ) : (
-              "Create session"
+              "세션 만들기"
             )}
           </button>
         </div>
@@ -290,9 +159,9 @@ export default function Home() {
         >
           <hr className="rule" />
           {[
-            "Speak into your microphone — your audio goes live",
-            "Share the QR code with your audience",
-            "Each language picked spins up one Gemini session",
+            "마이크에 말하면 음성이 실시간으로 송출됩니다",
+            "QR 코드를 청중에게 공유하세요",
+            "청중이 고른 언어마다 Gemini 세션이 하나씩 시작됩니다",
           ].map((text, i) => (
             <div key={i}>
               <div

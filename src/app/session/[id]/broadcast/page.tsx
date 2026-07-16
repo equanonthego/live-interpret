@@ -26,12 +26,19 @@ import "@livekit/components-styles";
 import { Track, RoomEvent } from "livekit-client";
 import SessionQRCode from "@/components/SessionQRCode";
 import { getLanguageByCode } from "@/lib/languages";
+import { SOURCE_LANGUAGE } from "@/lib/interpret-config";
 
 interface TranslationInfo {
   language: string;
   translatorIdentity: string;
   status: string;
   subscriberCount: number;
+}
+
+interface HostCaption {
+  id: string;
+  text: string;
+  final: boolean;
 }
 
 function BroadcastControls({
@@ -45,6 +52,8 @@ function BroadcastControls({
   const { localParticipant } = useLocalParticipant();
   const [translations, setTranslations] = useState<TranslationInfo[]>([]);
   const [listenerCount, setListenerCount] = useState(0);
+  const [hostCaptions, setHostCaptions] = useState<HostCaption[]>([]);
+  const captionEndRef = useRef<HTMLDivElement | null>(null);
 
   // Track active attendees count without useRemoteParticipants hook overhead
   useEffect(() => {
@@ -52,7 +61,9 @@ function BroadcastControls({
 
     const updateCount = () => {
       const count = Array.from(room.remoteParticipants.values()).filter(
-        (p) => !p.identity.startsWith("translator-")
+        (p) =>
+          !p.identity.startsWith("translator-") &&
+          !p.identity.startsWith("host-transcriber-")
       ).length;
       setListenerCount(count);
     };
@@ -148,6 +159,84 @@ function BroadcastControls({
     const interval = setInterval(fetchTranslations, 3000);
     return () => clearInterval(interval);
   }, [fetchTranslations]);
+
+  // Host captions: transcribe the organizer's own speech (source language) and
+  // show it on the control panel. Starts a transcribe-only bridge server-side
+  // and listens for its transcription data messages.
+  useEffect(() => {
+    if (!room) return;
+
+    const startHostTranscription = async () => {
+      try {
+        await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+      } catch (err) {
+        console.error("Failed to start host transcription:", err);
+      }
+    };
+
+    const setLanguageAttr = () => {
+      if (room.localParticipant) {
+        room.localParticipant
+          .setAttributes({ language: SOURCE_LANGUAGE })
+          .catch((err) =>
+            console.error("Failed to set organizer language attribute:", err)
+          );
+      }
+    };
+
+    const handleData = (
+      payload: Uint8Array,
+      _participant: unknown,
+      _kind: unknown,
+      topic: string | undefined,
+    ) => {
+      if (topic !== "transcription") return;
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload));
+        if (data.type !== "transcription" || data.language !== SOURCE_LANGUAGE) {
+          return;
+        }
+
+        setHostCaptions((prev) => {
+          const existing = prev.findIndex((c) => c.id === data.segmentId);
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = {
+              ...updated[existing],
+              text: updated[existing].text + data.text,
+              final: data.final,
+            };
+            return updated;
+          }
+          return [
+            ...prev,
+            { id: data.segmentId, text: data.text, final: data.final },
+          ].slice(-50);
+        });
+      } catch {
+        // Not a JSON transcription message
+      }
+    };
+
+    setLanguageAttr();
+    startHostTranscription();
+    room.on(RoomEvent.DataReceived, handleData);
+    room.on(RoomEvent.Connected, setLanguageAttr);
+
+    return () => {
+      room.off(RoomEvent.DataReceived, handleData);
+      room.off(RoomEvent.Connected, setLanguageAttr);
+    };
+  }, [room, sessionId]);
+
+  // Auto-scroll host captions to the latest line
+  useEffect(() => {
+    captionEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [hostCaptions]);
 
   // Main AudioContext and track publishing lifecycle
   useEffect(() => {
@@ -281,7 +370,7 @@ function BroadcastControls({
         setIsMicEnabled(true);
       } catch (err) {
         console.error("Failed to access microphone:", err);
-        alert("Could not access microphone: " + (err as Error).message);
+        alert("마이크에 접근할 수 없습니다: " + (err as Error).message);
       }
     }
   };
@@ -316,7 +405,7 @@ function BroadcastControls({
         const audioTracks = stream.getAudioTracks();
         if (audioTracks.length === 0) {
           stream.getTracks().forEach((track) => track.stop());
-          alert("No audio track selected. Make sure to check the 'Share tab audio' checkbox in the system sharing prompt.");
+          alert("오디오 트랙이 선택되지 않았습니다. 공유 창에서 '탭 오디오 공유' 체크박스를 켰는지 확인하세요.");
           return;
         }
 
@@ -356,7 +445,7 @@ function BroadcastControls({
       } catch (err) {
         console.error("Failed to capture tab audio:", err);
         if ((err as Error).name !== "NotAllowedError") {
-          alert("Could not capture tab audio: " + (err as Error).message);
+          alert("탭 오디오를 캡처할 수 없습니다: " + (err as Error).message);
         }
       }
     }
@@ -377,13 +466,13 @@ function BroadcastControls({
   };
 
   const isAudioActive = isMicEnabled || isTabAudioEnabled;
-  let statusText = "Muted";
+  let statusText = "음소거";
   if (isMicEnabled && isTabAudioEnabled) {
-    statusText = "Live (Mic + Tab)";
+    statusText = "송출 중 (마이크 + 탭)";
   } else if (isMicEnabled) {
-    statusText = "Live (Mic)";
+    statusText = "송출 중 (마이크)";
   } else if (isTabAudioEnabled) {
-    statusText = "Live (Tab)";
+    statusText = "송출 중 (탭)";
   }
 
   return (
@@ -391,7 +480,7 @@ function BroadcastControls({
       {/* Header */}
       <div style={{ marginBottom: 48 }}>
         <h1 className="display display-lg" style={{ marginBottom: 8 }}>
-          Broadcasting
+          <em>방송</em> 중
         </h1>
         <p className="mono">{sessionId}</p>
       </div>
@@ -447,13 +536,13 @@ function BroadcastControls({
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
-                Screen Awake
+                화면 켜짐 유지
               </span>
             )}
           </div>
 
           <span className="mono">
-            {listenerCount} listener{listenerCount !== 1 ? "s" : ""}
+            청취자 {listenerCount}명
           </span>
         </div>
 
@@ -463,6 +552,7 @@ function BroadcastControls({
             style={{
               padding: "16px",
               border: "1px solid var(--border)",
+              borderRadius: "var(--radius-card)",
               background: "var(--bg-elevated)",
               display: "flex",
               flexDirection: "column",
@@ -470,7 +560,7 @@ function BroadcastControls({
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 500, fontSize: "14px" }}>Microphone</span>
+              <span style={{ fontWeight: 600, fontSize: "14px" }}>마이크</span>
               <button
                 onClick={toggleMicrophone}
                 className="btn"
@@ -478,12 +568,12 @@ function BroadcastControls({
                   padding: "8px 16px",
                   fontSize: "12px",
                   border: isMicEnabled ? "1px solid var(--error)" : "none",
-                  background: isMicEnabled ? "transparent" : "var(--fg)",
-                  color: isMicEnabled ? "var(--error)" : "var(--bg)",
+                  background: isMicEnabled ? "transparent" : "var(--accent)",
+                  color: isMicEnabled ? "var(--error)" : "#fff",
                   cursor: "pointer",
                 }}
               >
-                {isMicEnabled ? "Disable" : "Enable"}
+                {isMicEnabled ? "끄기" : "켜기"}
               </button>
             </div>
             {isMicEnabled && (
@@ -495,7 +585,7 @@ function BroadcastControls({
                   max="100"
                   value={micVolume}
                   onChange={(e) => handleMicVolumeChange(Number(e.target.value))}
-                  style={{ flexGrow: 1, accentColor: "var(--fg)", cursor: "pointer" }}
+                  style={{ flexGrow: 1, accentColor: "var(--accent)", cursor: "pointer" }}
                 />
                 <span className="mono" style={{ width: "40px", textAlign: "right", fontSize: "11px" }}>
                   {micVolume}%
@@ -509,6 +599,7 @@ function BroadcastControls({
             style={{
               padding: "16px",
               border: "1px solid var(--border)",
+              borderRadius: "var(--radius-card)",
               background: "var(--bg-elevated)",
               display: "flex",
               flexDirection: "column",
@@ -516,7 +607,7 @@ function BroadcastControls({
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 500, fontSize: "14px" }}>Browser Tab Audio</span>
+              <span style={{ fontWeight: 600, fontSize: "14px" }}>브라우저 탭 오디오</span>
               <button
                 onClick={toggleTabAudio}
                 className="btn"
@@ -524,12 +615,12 @@ function BroadcastControls({
                   padding: "8px 16px",
                   fontSize: "12px",
                   border: isTabAudioEnabled ? "1px solid var(--error)" : "none",
-                  background: isTabAudioEnabled ? "transparent" : "var(--fg)",
-                  color: isTabAudioEnabled ? "var(--error)" : "var(--bg)",
+                  background: isTabAudioEnabled ? "transparent" : "var(--accent)",
+                  color: isTabAudioEnabled ? "var(--error)" : "#fff",
                   cursor: "pointer",
                 }}
               >
-                {isTabAudioEnabled ? "Stop Sharing" : "Share Tab"}
+                {isTabAudioEnabled ? "공유 중지" : "탭 공유"}
               </button>
             </div>
             {isTabAudioEnabled && (
@@ -541,7 +632,7 @@ function BroadcastControls({
                   max="100"
                   value={tabVolume}
                   onChange={(e) => handleTabVolumeChange(Number(e.target.value))}
-                  style={{ flexGrow: 1, accentColor: "var(--fg)", cursor: "pointer" }}
+                  style={{ flexGrow: 1, accentColor: "var(--accent)", cursor: "pointer" }}
                 />
                 <span className="mono" style={{ width: "40px", textAlign: "right", fontSize: "11px" }}>
                   {tabVolume}%
@@ -549,6 +640,49 @@ function BroadcastControls({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      <hr className="rule" />
+
+      {/* Host captions — the organizer's own speech, transcribed to Korean */}
+      <div style={{ padding: "28px 0" }}>
+        <span className="label" style={{ marginBottom: 16, display: "block" }}>
+          내 음성 (한국어)
+        </span>
+        <div
+          style={{
+            maxHeight: 160,
+            overflowY: "auto",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-card)",
+            background: "var(--bg-elevated)",
+            padding: "16px",
+          }}
+        >
+          {hostCaptions.length === 0 ? (
+            <p className="body-sm italic">
+              마이크를 켜고 말하면 인식된 한국어가 여기에 표시됩니다
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {hostCaptions.map((c) => (
+                <p
+                  key={c.id}
+                  style={{
+                    fontFamily: "var(--font-body)",
+                    fontSize: "15px",
+                    lineHeight: 1.6,
+                    color: c.final ? "var(--fg)" : "var(--fg-secondary)",
+                    transition: "color 0.3s ease",
+                  }}
+                >
+                  {c.text}
+                </p>
+              ))}
+              <div ref={captionEndRef} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -564,7 +698,7 @@ function BroadcastControls({
           gap: 16,
         }}
       >
-        <span className="label">Share with attendees</span>
+        <span className="label">청중에게 공유</span>
         <SessionQRCode url={joinUrl} size={140} />
         <p className="mono" style={{ wordBreak: "break-all", textAlign: "center" }}>
           {joinUrl}
@@ -576,12 +710,12 @@ function BroadcastControls({
       {/* Active translations */}
       <div style={{ padding: "28px 0" }}>
         <span className="label" style={{ marginBottom: 16, display: "block" }}>
-          Translations · {translations.length}
+          번역 · {translations.length}개
         </span>
 
         {translations.length === 0 ? (
           <p className="body-sm italic">
-            None yet — attendees can request them
+            아직 없습니다 — 청중이 요청하면 표시됩니다
           </p>
         ) : (
           translations.map((t) => {
@@ -596,7 +730,7 @@ function BroadcastControls({
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <span className="lang-meta">
-                    {t.subscriberCount} listener{t.subscriberCount !== 1 ? "s" : ""}
+                    청취자 {t.subscriberCount}명
                   </span>
                   <span className={`status status--${t.status === "active" ? "active" : "waiting"}`}>
                     <span className="status-dot pulse" />
@@ -623,12 +757,24 @@ function BroadcastControls({
             } catch (err) {
               console.error("Failed to explicitly delete session on broadcast end:", err);
             }
+            try {
+              // Belt-and-suspenders: the DELETE above already tears down the
+              // host-caption bridge via removeAllTranslations, but stop it
+              // explicitly too in case that ordering ever changes.
+              await fetch("/api/transcribe", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId }),
+              });
+            } catch (err) {
+              console.error("Failed to explicitly stop host transcription on broadcast end:", err);
+            }
             room.disconnect();
             window.location.href = "/";
           }}
           style={{ width: "100%" }}
         >
-          End broadcast
+          방송 종료
         </button>
       </div>
     </div>
@@ -704,17 +850,17 @@ export default function BroadcastPage({
       <div className="page enter">
         <div className="container" style={{ textAlign: "center" }}>
           <h1 className="display display-md" style={{ marginBottom: 12 }}>
-            <em>Password</em> Required
+            <em>비밀번호</em> 필요
           </h1>
           <p className="body-sm" style={{ marginBottom: 32 }}>
-            This broadcast session is password-protected.
+            이 방송 세션은 비밀번호로 보호되어 있습니다.
           </p>
           <form onSubmit={handlePasswordSubmit}>
             <div style={{ marginBottom: 20 }}>
               <input
                 type="password"
                 className="input-field"
-                placeholder="Enter password"
+                placeholder="비밀번호 입력"
                 value={localPassword}
                 onChange={(e) => setLocalPassword(e.target.value)}
                 style={{ textAlign: "center" }}
@@ -733,7 +879,7 @@ export default function BroadcastPage({
               style={{ width: "100%" }}
               disabled={verifying}
             >
-              {verifying ? "Verifying…" : "Submit"}
+              {verifying ? "확인 중…" : "확인"}
             </button>
           </form>
           <button
@@ -741,7 +887,7 @@ export default function BroadcastPage({
             onClick={() => (window.location.href = "/")}
             style={{ marginTop: 16 }}
           >
-            Cancel
+            취소
           </button>
         </div>
       </div>
@@ -753,11 +899,11 @@ export default function BroadcastPage({
       <div className="page">
         <div className="container" style={{ textAlign: "center" }}>
           <p className="display display-md" style={{ marginBottom: 16 }}>
-            Something went wrong
+            문제가 발생했습니다
           </p>
           <p className="body-sm" style={{ marginBottom: 32 }}>{error}</p>
           <button className="btn btn-outline" onClick={() => (window.location.href = "/")}>
-            Go home
+            홈으로
           </button>
         </div>
       </div>

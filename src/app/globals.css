@@ -14,34 +14,40 @@
  * limitations under the License.
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300;1,9..40,400&family=DM+Mono:wght@300;400&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
 
 :root {
-  --font-display: 'Instrument Serif', Georgia, serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'DM Mono', 'SF Mono', monospace;
+  --font-display: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-body: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, 'Menlo', monospace;
 
-  --bg: #F6F4F0;
-  --bg-elevated: #EDEAE4;
-  --bg-inset: #E5E2DB;
+  --bg: #FFFFFF;
+  --bg-elevated: #F5F7FA;
+  --bg-inset: #EEF1F6;
 
-  --fg: #1A1917;
-  --fg-secondary: #6B6860;
-  --fg-tertiary: #9C9890;
-  --fg-ghost: #C4C0B8;
+  --fg: #111827;
+  --fg-secondary: #6B7280;
+  --fg-tertiary: #9CA3AF;
+  --fg-ghost: #CBD5E1;
 
-  --accent: #C8432B;
-  --accent-soft: rgba(200, 67, 43, 0.08);
+  --accent: #2B7FFF;
+  --accent-soft: rgba(43, 127, 255, 0.08);
+  --accent-strong: #1D6FF2;
 
-  --border: #DAD7D0;
-  --border-light: #EDEAE4;
+  --border: #E5E7EB;
+  --border-light: #F1F3F5;
 
-  --success: #2D7D46;
-  --success-soft: rgba(45, 125, 70, 0.08);
-  --warning: #A07B1A;
-  --warning-soft: rgba(160, 123, 26, 0.08);
-  --error: #B33A2D;
-  --error-soft: rgba(179, 58, 45, 0.08);
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-card-hover: 0 4px 16px rgba(16, 24, 40, 0.08);
+
+  --success: #16A34A;
+  --success-soft: rgba(22, 163, 74, 0.08);
+  --warning: #D97706;
+  --warning-soft: rgba(217, 119, 6, 0.08);
+  --error: #DC2626;
+  --error-soft: rgba(220, 38, 45, 0.08);
 }
 
 *,
@@ -97,9 +103,9 @@ body {
 
 .display {
   font-family: var(--font-display);
-  font-weight: 400;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
   color: var(--fg);
 }
 
@@ -141,13 +147,19 @@ body {
 .mono {
   font-family: var(--font-mono);
   font-size: 13px;
-  font-weight: 300;
-  letter-spacing: 0.02em;
+  font-weight: 400;
+  letter-spacing: 0.01em;
   color: var(--fg-tertiary);
 }
 
 .italic {
   font-style: italic;
+}
+
+/* Serif italic emphasis is replaced by a blue accent point (movie Kick wordmark style) */
+.display em {
+  font-style: normal;
+  color: var(--accent);
 }
 
 /* ——————————————————————————————————————
@@ -174,25 +186,33 @@ body {
   padding: 14px 32px;
   font-family: var(--font-body);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   border: none;
+  border-radius: var(--radius-control);
   cursor: pointer;
   transition: all 0.2s ease;
   text-decoration: none;
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn:hover {
+  background: var(--accent-strong);
 }
 
 .btn-dark {
-  background: var(--fg);
-  color: var(--bg);
-  border-radius: 0;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-control);
+  box-shadow: 0 1px 2px rgba(43, 127, 255, 0.24);
 }
 
 .btn-dark:hover {
-  background: #333028;
+  background: var(--accent-strong);
 }
 
 .btn-dark:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -200,34 +220,38 @@ body {
   background: transparent;
   color: var(--fg);
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-control);
 }
 
 .btn-outline:hover {
-  border-color: var(--fg);
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .btn-ghost {
   background: transparent;
   color: var(--fg-secondary);
   border: none;
+  border-radius: var(--radius-control);
   padding: 8px 16px;
   font-size: 13px;
 }
 
 .btn-ghost:hover {
   color: var(--fg);
+  background: var(--bg-elevated);
 }
 
 .btn-danger {
   background: transparent;
   color: var(--error);
   border: 1px solid var(--error);
-  border-radius: 0;
+  border-radius: var(--radius-control);
   padding: 12px 24px;
   font-family: var(--font-body);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -246,6 +270,9 @@ body {
 
 .card {
   border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--bg);
+  box-shadow: var(--shadow-card);
   padding: 28px;
 }
 
@@ -261,13 +288,13 @@ body {
   color: var(--fg);
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius-control);
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%236B6860' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%236B7280' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 16px center;
   cursor: pointer;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .select-field:hover {
@@ -276,7 +303,8 @@ body {
 
 .select-field:focus {
   outline: none;
-  border-color: var(--fg);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .select-field option {
@@ -292,8 +320,8 @@ body {
   color: var(--fg);
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 0;
-  transition: border-color 0.2s ease;
+  border-radius: var(--radius-control);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .input-field:hover {
@@ -302,7 +330,8 @@ body {
 
 .input-field:focus {
   outline: none;
-  border-color: var(--fg);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* ——————————————————————————————————————
@@ -360,7 +389,7 @@ body {
 
 .waveform-bar {
   width: 2px;
-  background: var(--fg);
+  background: var(--accent);
   border-radius: 1px;
   transition: height 0.15s ease;
 }
@@ -395,6 +424,8 @@ body {
   background: white;
   display: inline-block;
   border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
 }
 
 /* ——————————————————————————————————————

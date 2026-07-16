@@ -81,6 +81,10 @@ export class TranslationBridge {
   private lastAudioFrameTime: number = 0;
   private captureChain: Promise<void> = Promise.resolve();
 
+  // When true, this bridge only transcribes the organizer's own speech (no
+  // translated audio track is published). Used for the host's Korean captions.
+  private readonly transcribeOnly: boolean;
+
   constructor(
     sessionId: string,
     targetLanguage: string,
@@ -90,12 +94,16 @@ export class TranslationBridge {
       livekitUrl: string;
       livekitApiKey: string;
       livekitApiSecret: string;
-    }
+    },
+    transcribeOnly: boolean = false
   ) {
     this.sessionId = sessionId;
     this.targetLanguage = targetLanguage;
     this.sourceIdentity = sourceIdentity;
-    this.identity = `translator-${targetLanguage}`;
+    this.transcribeOnly = transcribeOnly;
+    this.identity = transcribeOnly
+      ? `host-transcriber-${targetLanguage}`
+      : `translator-${targetLanguage}`;
     this.geminiApiKey = config.geminiApiKey;
     this.livekitUrl = config.livekitUrl;
     this.livekitApiKey = config.livekitApiKey;
@@ -215,6 +223,15 @@ export class TranslationBridge {
     console.log(
       `[TranslationBridge:${this.targetLanguage}] Joined room as ${this.identity}`
     );
+
+    // Transcription-only bridges (host captions) never publish audio — they
+    // exist purely to stream the organizer's own speech back as text.
+    if (this.transcribeOnly) {
+      console.log(
+        `[TranslationBridge:${this.targetLanguage}] transcribeOnly mode — skipping audio track publish`
+      );
+      return;
+    }
 
     // Create an AudioSource to publish translated audio
     // Gemini outputs 24kHz mono PCM
@@ -500,7 +517,8 @@ export class TranslationBridge {
       const serverContent = message?.serverContent;
       const parts = serverContent?.modelTurn?.parts;
 
-      if (parts?.length) {
+      // Transcription-only bridges discard generated audio — captions only.
+      if (parts?.length && !this.transcribeOnly) {
         for (const part of parts) {
           if (part.inlineData?.data) {
             this.framesReceivedFromGemini++;

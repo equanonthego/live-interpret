@@ -20,6 +20,7 @@ import { useEffect, useState, useCallback, useRef, use } from "react";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
+  StartAudio,
   useRoomContext,
   useTracks,
 } from "@livekit/components-react";
@@ -414,6 +415,17 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
         <p className="mono">{sessionId}</p>
       </div>
 
+      {/*
+        Autoplay fallback: mobile browsers block audio playback until a user
+        gesture. StartAudio renders only while playback is blocked and hides
+        itself once the user taps it to unlock the translated audio track.
+      */}
+      <StartAudio
+        label="🔊 Tap to enable translated audio"
+        className="btn btn-dark"
+        style={{ width: "100%", marginBottom: 32 }}
+      />
+
       {/* Status */}
       <div style={{ marginBottom: 32 }}>
         <div
@@ -482,11 +494,16 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
 
       {/* Language selector */}
       <div style={{ padding: "28px 0" }}>
+        {/*
+          Attendees may pick their language before the broadcast starts. The
+          translator bridge is created server-side and waits for the organizer
+          to go live, so audio + transcription begin the moment they speak.
+        */}
         <LanguageSelector
           sessionId={sessionId}
           currentLanguage={currentLanguage}
           onLanguageChange={handleLanguageChange}
-          disabled={!isConnected}
+          disabled={false}
           allowedLanguages={allowedLanguages}
         />
       </div>
