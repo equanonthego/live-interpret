@@ -40,6 +40,7 @@ import {
   AudioStream,
 } from "@livekit/rtc-node";
 import WebSocket from "ws";
+import { GEMINI_LIVE_MODEL } from "./interpret-config";
 
 export type BridgeStatus = "starting" | "active" | "error" | "closed";
 
@@ -66,7 +67,7 @@ export class TranslationBridge {
 
   // Gemini Live API config
   private readonly geminiApiKey: string;
-  private readonly geminiModel: string = "gemini-3.5-live-translate-preview";
+  private readonly geminiModel: string = GEMINI_LIVE_MODEL;
   private readonly sampleRate: number = 24000; // Gemini outputs 24kHz
   private readonly inputSampleRate: number = 48000; // LiveKit default
   private readonly channels: number = 1;

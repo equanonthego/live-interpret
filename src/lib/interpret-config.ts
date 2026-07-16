@@ -4,3 +4,7 @@ export const DEFAULT_INTERPRET_LANGUAGES = ["en", "zh-Hans", "ja", "vi"];
 
 // 발화(소스) 언어 — 강의 시나리오 기본값.
 export const SOURCE_LANGUAGE = "ko";
+
+// Gemini Live 모델명 — 브릿지와 /api/verify-key가 반드시 동일 값을 써야
+// 하므로 여기 한 곳에서만 정의한다.
+export const GEMINI_LIVE_MODEL = "gemini-3.5-live-translate-preview";
