@@ -28,6 +28,13 @@ export default function Home() {
   const [eventId, setEventId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const [geminiApiKey, setGeminiApiKey] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("gemini_api_key") || "";
+  });
+  const [keyStatus, setKeyStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [keyError, setKeyError] = useState<string | null>(null);
+
   useEffect(() => {
     async function checkAuthStatus() {
       try {
@@ -41,6 +48,39 @@ export default function Home() {
     checkAuthStatus();
   }, []);
 
+  const onKeyChange = (v: string) => {
+    setGeminiApiKey(v);
+    if (keyStatus !== "idle") {
+      setKeyStatus("idle");
+      setKeyError(null);
+    }
+  };
+
+  const testGeminiKey = async () => {
+    const key = geminiApiKey.trim();
+    if (!key) return;
+    setKeyStatus("testing");
+    setKeyError(null);
+    try {
+      const res = await fetch("/api/verify-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geminiApiKey: key }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setKeyStatus("ok");
+        localStorage.setItem("gemini_api_key", key);
+      } else {
+        setKeyStatus("fail");
+        setKeyError(data.error || "키 검증에 실패했습니다.");
+      }
+    } catch {
+      setKeyStatus("fail");
+      setKeyError("네트워크 오류로 검증하지 못했습니다.");
+    }
+  };
+
   async function createSession() {
     setLoading(true);
     setError(null);
@@ -53,6 +93,7 @@ export default function Home() {
           password,
           eventId,
           allowedLanguages: DEFAULT_INTERPRET_LANGUAGES,
+          geminiApiKey: geminiApiKey.trim(),
         }),
       });
       const data = await res.json();
@@ -98,6 +139,35 @@ export default function Home() {
             gap: 12,
           }}
         >
+          <div style={{ marginBottom: 4 }}>
+            <input
+              type="password"
+              className="input-field"
+              placeholder="Gemini API Key (본인 키)"
+              value={geminiApiKey}
+              onChange={(e) => onKeyChange(e.target.value)}
+              style={{ textAlign: "center", width: "100%" }}
+              disabled={loading}
+            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={testGeminiKey}
+                disabled={!geminiApiKey.trim() || keyStatus === "testing"}
+                style={{ padding: "6px 14px", fontSize: 13 }}
+              >
+                {keyStatus === "testing" ? "확인 중…" : "연결 테스트"}
+              </button>
+              {keyStatus === "ok" && (
+                <span style={{ color: "var(--success)", fontSize: 13 }}>✓ 연결됨</span>
+              )}
+              {keyStatus === "fail" && (
+                <span style={{ color: "var(--error)", fontSize: 13 }}>{keyError}</span>
+              )}
+            </div>
+          </div>
+
           {passwordRequired && (
             <input
               type="password"
@@ -133,7 +203,7 @@ export default function Home() {
           <button
             className="btn btn-dark"
             onClick={createSession}
-            disabled={loading}
+            disabled={loading || keyStatus !== "ok"}
             id="create-session-btn"
           >
             {loading ? (
