@@ -44,6 +44,9 @@ export interface SessionInfo {
   organizerIdentity: string;
   createdAt: Date;
   allowedLanguages?: string[];
+  // 이 세션의 통역을 돌릴 방송자 소유 Gemini 키. 서버 메모리에만 존재하며
+  // 디스크·로그에 절대 기록하지 않는다.
+  geminiApiKey: string;
   // 발언권을 쥔 청자 identity. 없으면(undefined) 강의자만 발언 중.
   currentSpeaker?: string;
   // 손든 청자 대기열 (순서대로).
@@ -82,9 +85,14 @@ class TranslationSessionManager {
     return globalForSessionManager.sessionManagerInstance;
   }
 
-  private buildBridgeConfig() {
+  private buildBridgeConfig(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    const geminiApiKey = session?.geminiApiKey;
+    if (!geminiApiKey) {
+      throw new Error(`No Gemini API key stored for session ${sessionId}`);
+    }
     return {
-      geminiApiKey: process.env.GEMINI_API_KEY!,
+      geminiApiKey,
       livekitUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
       livekitApiKey: process.env.LIVEKIT_API_KEY!,
       livekitApiSecret: process.env.LIVEKIT_API_SECRET!,
@@ -95,13 +103,15 @@ class TranslationSessionManager {
   createSession(
     sessionId: string,
     organizerIdentity: string,
-    allowedLanguages?: string[]
+    allowedLanguages: string[] | undefined,
+    geminiApiKey: string
   ): SessionInfo {
     const info: SessionInfo = {
       sessionId,
       organizerIdentity,
       createdAt: new Date(),
       allowedLanguages,
+      geminiApiKey,
       handRaised: [],
     };
     this.sessions.set(sessionId, info);
@@ -189,7 +199,7 @@ class TranslationSessionManager {
       sessionId,
       targetLanguage,
       organizerIdentity,
-      this.buildBridgeConfig()
+      this.buildBridgeConfig(sessionId)
     );
 
     bridge.onStop = () => {
@@ -245,7 +255,7 @@ class TranslationSessionManager {
       sessionId,
       "ko",
       questionerIdentity,
-      this.buildBridgeConfig()
+      this.buildBridgeConfig(sessionId)
     );
     bridge.onStop = () => {
       if (this.questionBridges.get(sessionId) === bridge) {
@@ -306,7 +316,7 @@ class TranslationSessionManager {
       sessionId,
       SOURCE_LANGUAGE,
       session.organizerIdentity,
-      this.buildBridgeConfig(),
+      this.buildBridgeConfig(sessionId),
       true // transcribeOnly
     );
 

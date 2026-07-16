@@ -31,6 +31,15 @@ export async function POST(req: NextRequest) {
       allowedLanguages = body.allowedLanguages.filter((l: any) => typeof l === "string");
     }
 
+    const geminiApiKey =
+      typeof body.geminiApiKey === "string" ? body.geminiApiKey.trim() : "";
+    if (!geminiApiKey) {
+      return NextResponse.json(
+        { error: "Missing geminiApiKey" },
+        { status: 400 }
+      );
+    }
+
     const expectedPassword = process.env.BROADCAST_PASSWORD;
     if (expectedPassword && password !== expectedPassword) {
       return NextResponse.json(
@@ -65,7 +74,7 @@ export async function POST(req: NextRequest) {
       await manager.removeAllTranslations(sessionId);
     }
 
-    manager.createSession(sessionId, organizerIdentity, allowedLanguages);
+    manager.createSession(sessionId, organizerIdentity, allowedLanguages, geminiApiKey);
 
     // Build the attendee join URL
     const protocol = req.headers.get("x-forwarded-proto") || "http";
