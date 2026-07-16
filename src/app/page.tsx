@@ -111,6 +111,17 @@ export default function Home() {
     }
   }
 
+  const statusDotLabel =
+    keyStatus === "ok"
+      ? "연결됨"
+      : keyStatus === "fail"
+      ? "연결 실패"
+      : keyStatus === "testing"
+      ? "확인 중"
+      : "연결 안 됨";
+  const statusDotColor =
+    keyStatus === "ok" ? "var(--accent)" : keyStatus === "fail" ? "var(--error)" : "var(--fg)";
+
   return (
     <div className="page">
       <div className="container" style={{ textAlign: "center" }}>
@@ -165,23 +176,14 @@ export default function Home() {
               >
                 {keyStatus === "testing" ? "확인 중…" : "연결 테스트"}
                 <span
-                  aria-label={
-                    keyStatus === "ok" ? "연결됨" : keyStatus === "fail" ? "연결 실패" : "연결 안 됨"
-                  }
-                  title={
-                    keyStatus === "ok" ? "연결됨" : keyStatus === "fail" ? "연결 실패" : "연결 안 됨"
-                  }
+                  aria-label={statusDotLabel}
+                  title={statusDotLabel}
                   style={{
                     display: "inline-block",
                     width: 8,
                     height: 8,
                     borderRadius: "50%",
-                    background:
-                      keyStatus === "ok"
-                        ? "var(--accent)"
-                        : keyStatus === "fail"
-                        ? "var(--error)"
-                        : "var(--fg)",
+                    background: statusDotColor,
                     flexShrink: 0,
                   }}
                 />
