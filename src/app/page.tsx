@@ -151,16 +151,16 @@ export default function Home() {
           }}
         >
           <div style={{ marginBottom: 4 }}>
-            <input
-              type="password"
-              className="input-field"
-              placeholder="Gemini API Key (본인 키)"
-              value={geminiApiKey}
-              onChange={(e) => onKeyChange(e.target.value)}
-              style={{ textAlign: "center", width: "100%" }}
-              disabled={loading}
-            />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="password"
+                className="input-field"
+                placeholder="Google API Key"
+                value={geminiApiKey}
+                onChange={(e) => onKeyChange(e.target.value)}
+                style={{ textAlign: "left", flex: 1, minWidth: 0 }}
+                disabled={loading}
+              />
               <button
                 type="button"
                 className="btn btn-outline"
@@ -172,6 +172,7 @@ export default function Home() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
+                  flexShrink: 0,
                 }}
               >
                 {keyStatus === "testing" ? "확인 중…" : "연결 테스트"}
@@ -188,10 +189,10 @@ export default function Home() {
                   }}
                 />
               </button>
-              {keyStatus === "fail" && (
-                <span style={{ color: "var(--error)", fontSize: 13 }}>{keyError}</span>
-              )}
             </div>
+            {keyStatus === "fail" && (
+              <p style={{ color: "var(--error)", fontSize: 13, marginTop: 8 }}>{keyError}</p>
+            )}
           </div>
 
           {passwordRequired && (
