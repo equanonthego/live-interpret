@@ -16,15 +16,13 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_INTERPRET_LANGUAGES } from "@/lib/interpret-config";
 
 export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [passwordRequired, setPasswordRequired] = useState(false);
-  const [password, setPassword] = useState("");
   const [eventId, setEventId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -34,19 +32,6 @@ export default function Home() {
   });
   const [keyStatus, setKeyStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [keyError, setKeyError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function checkAuthStatus() {
-      try {
-        const res = await fetch("/api/auth/status");
-        const data = await res.json();
-        setPasswordRequired(data.passwordRequired);
-      } catch (err) {
-        console.error("Failed to check auth status:", err);
-      }
-    }
-    checkAuthStatus();
-  }, []);
 
   const onKeyChange = (v: string) => {
     setGeminiApiKey(v);
@@ -90,7 +75,6 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organizerName: "host",
-          password,
           eventId,
           allowedLanguages: DEFAULT_INTERPRET_LANGUAGES,
           geminiApiKey: geminiApiKey.trim(),
@@ -99,9 +83,6 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || "Failed to create session");
-      }
-      if (passwordRequired) {
-        sessionStorage.setItem("broadcast_password", password);
       }
       router.push(`/session/${data.sessionId}/broadcast`);
     } catch (err) {
@@ -195,17 +176,6 @@ export default function Home() {
             )}
           </div>
 
-          {passwordRequired && (
-            <input
-              type="password"
-              className="input-field"
-              placeholder="방송 비밀번호 입력"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ textAlign: "center" }}
-              disabled={loading}
-            />
-          )}
           <input
             type="text"
             className="input-field"

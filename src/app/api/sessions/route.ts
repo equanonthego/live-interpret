@@ -23,9 +23,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const organizerName = body.organizerName || "organizer";
-    const password = body.password;
     const eventId = body.eventId;
-    
+
     let allowedLanguages: string[] | undefined = undefined;
     if (Array.isArray(body.allowedLanguages)) {
       allowedLanguages = body.allowedLanguages.filter((l: any) => typeof l === "string");
@@ -37,14 +36,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Missing geminiApiKey" },
         { status: 400 }
-      );
-    }
-
-    const expectedPassword = process.env.BROADCAST_PASSWORD;
-    if (expectedPassword && password !== expectedPassword) {
-      return NextResponse.json(
-        { error: "Incorrect password" },
-        { status: 401 }
       );
     }
 
