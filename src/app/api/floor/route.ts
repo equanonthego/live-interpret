@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 // POST /api/floor — 강의자가 발언권을 승인(grant)/회수(revoke)
 export async function POST(req: NextRequest) {
   try {
-    const { sessionId, action, identity, password } = await req.json();
+    const { sessionId, action, identity } = await req.json();
 
     if (!sessionId || !action || !identity) {
       return NextResponse.json(
@@ -36,11 +36,6 @@ export async function POST(req: NextRequest) {
     const session = manager.getSession(sessionId);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    const expectedPassword = process.env.BROADCAST_PASSWORD;
-    if (expectedPassword && password !== expectedPassword) {
-      return NextResponse.json({ error: "Incorrect password" }, { status: 401 });
     }
 
     if (action === "grant") {

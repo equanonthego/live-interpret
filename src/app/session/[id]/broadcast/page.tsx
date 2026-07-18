@@ -16,7 +16,7 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, use, useRef, FormEvent } from "react";
+import { useEffect, useState, useCallback, use, useRef } from "react";
 import {
   LiveKitRoom,
   useLocalParticipant,
@@ -869,109 +869,33 @@ export default function BroadcastPage({
   const [token, setToken] = useState("");
   const [livekitUrl, setLivekitUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [passwordPromptRequired, setPasswordPromptRequired] = useState(false);
-  const [localPassword, setLocalPassword] = useState("");
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
   const isEndingRef = useRef(false);
 
   const handleEndBroadcast = useCallback(() => {
     isEndingRef.current = true;
   }, []);
 
-  const fetchToken = useCallback(async (pass: string) => {
+  const fetchToken = useCallback(async () => {
     try {
       const identity = `organizer-host`;
-      const url = `/api/token?room=${sessionId}&identity=${identity}&role=organizer${pass ? `&password=${encodeURIComponent(pass)}` : ""}`;
+      const url = `/api/token?room=${sessionId}&identity=${identity}&role=organizer`;
       const res = await fetch(url);
       const data = await res.json();
-      
-      if (res.status === 401) {
-        setPasswordPromptRequired(true);
-        return false;
-      }
-      
+
       if (!res.ok || data.error) {
         throw new Error(data.error || "Failed to fetch token");
       }
-      
-      if (pass) {
-        sessionStorage.setItem("broadcast_password", pass);
-      }
+
       setToken(data.token);
       setLivekitUrl(data.serverUrl);
-      setPasswordPromptRequired(false);
-      return true;
     } catch (err) {
       setError((err as Error).message);
-      return false;
     }
   }, [sessionId]);
 
   useEffect(() => {
-    const cachedPass = sessionStorage.getItem("broadcast_password") || "";
-    fetchToken(cachedPass);
+    fetchToken();
   }, [fetchToken]);
-
-  const handlePasswordSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setVerifying(true);
-    setPasswordError(null);
-    const success = await fetchToken(localPassword);
-    setVerifying(false);
-    if (!success && !error) {
-      setPasswordError("Incorrect password");
-    }
-  };
-
-  if (passwordPromptRequired) {
-    return (
-      <div className="page enter">
-        <div className="container" style={{ textAlign: "center" }}>
-          <h1 className="display display-md" style={{ marginBottom: 12 }}>
-            <em>비밀번호</em> 필요
-          </h1>
-          <p className="body-sm" style={{ marginBottom: 32 }}>
-            이 방송 세션은 비밀번호로 보호되어 있습니다.
-          </p>
-          <form onSubmit={handlePasswordSubmit}>
-            <div style={{ marginBottom: 20 }}>
-              <input
-                type="password"
-                className="input-field"
-                placeholder="비밀번호 입력"
-                value={localPassword}
-                onChange={(e) => setLocalPassword(e.target.value)}
-                style={{ textAlign: "center" }}
-                disabled={verifying}
-                required
-              />
-            </div>
-            {passwordError && (
-              <p className="body-sm" style={{ color: "var(--error)", marginBottom: 20 }}>
-                {passwordError}
-              </p>
-            )}
-            <button
-              type="submit"
-              className="btn btn-dark"
-              style={{ width: "100%" }}
-              disabled={verifying}
-            >
-              {verifying ? "확인 중…" : "확인"}
-            </button>
-          </form>
-          <button
-            className="btn btn-ghost"
-            onClick={() => (window.location.href = "/")}
-            style={{ marginTop: 16 }}
-          >
-            취소
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   if (error) {
     return (
