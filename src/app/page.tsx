@@ -129,6 +129,8 @@ export default function Home() {
       if (analysis) {
         form.append("presentationContext", JSON.stringify(analysis));
       }
+      // 원본 파일도 함께 올려 전체보기 렌더에 쓴다.
+      if (pdfFile) form.append("presentation", pdfFile);
 
       // FormData 사용 시 Content-Type을 직접 지정하지 않는다(브라우저가
       // multipart boundary를 포함해 자동 설정).
