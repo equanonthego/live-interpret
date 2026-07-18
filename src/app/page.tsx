@@ -19,15 +19,20 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_INTERPRET_LANGUAGES } from "@/lib/interpret-config";
+import type { PresentationContext } from "@/lib/glossary-extractor";
 
 export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [eventId, setEventId] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 발표자료 분석 상태: 업로드 즉시 /api/extract로 분석한다.
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<PresentationContext | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   // 페이지가 뜰 때 API 키 입력창은 항상 비어 있는 상태로 시작한다.
   // (이전에는 localStorage에 저장된 키를 자동으로 채워 넣었다.)
@@ -57,6 +62,8 @@ export default function Home() {
       const data = await res.json();
       if (data.ok) {
         setKeyStatus("ok");
+        // 키 입력 전에 파일을 넣었다면 지금 분석한다.
+        if (pdfFile && !analysis && !analyzing) analyzePdf(pdfFile);
       } else {
         setKeyStatus("fail");
         setKeyError(data.error || "키 검증에 실패했습니다.");
@@ -67,19 +74,55 @@ export default function Home() {
     }
   };
 
+  // 발표자료(PDF)를 업로드 즉시 분석한다. 키가 있어야 분석 가능.
+  const analyzePdf = async (file: File) => {
+    const key = geminiApiKey.trim();
+    setAnalysis(null);
+    setAnalysisError(null);
+    if (!key) {
+      setAnalysisError("먼저 Google API Key를 입력하세요.");
+      return;
+    }
+    setAnalyzing(true);
+    try {
+      const form = new FormData();
+      form.append("presentation", file);
+      form.append("geminiApiKey", key);
+      const res = await fetch("/api/extract", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "발표자료 분석에 실패했습니다.");
+      }
+      setAnalysis(data as PresentationContext);
+    } catch (e) {
+      setAnalysisError((e as Error).message);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const onPdfPicked = (file: File | null) => {
+    setPdfFile(file);
+    setAnalysis(null);
+    setAnalysisError(null);
+    if (file) analyzePdf(file);
+  };
+
   async function createSession() {
     setLoading(true);
     setError(null);
     try {
       const form = new FormData();
       form.append("organizerName", "host");
-      form.append("eventId", eventId);
       form.append(
         "allowedLanguages",
         JSON.stringify(DEFAULT_INTERPRET_LANGUAGES)
       );
       form.append("geminiApiKey", geminiApiKey.trim());
-      if (pdfFile) form.append("presentation", pdfFile);
+      // 이미 분석한 컨텍스트가 있으면 그대로 넘겨 재분석을 피한다.
+      if (analysis) {
+        form.append("presentationContext", JSON.stringify(analysis));
+      }
 
       // FormData 사용 시 Content-Type을 직접 지정하지 않는다(브라우저가
       // multipart boundary를 포함해 자동 설정).
@@ -184,42 +227,43 @@ export default function Home() {
             )}
           </div>
 
-          <input
-            type="text"
-            className="input-field"
-            placeholder="이벤트 ID (선택, 예: weekly-sync)"
-            value={eventId}
-            onChange={(e) => setEventId(e.target.value)}
-            style={{ textAlign: "center" }}
-            disabled={loading}
-          />
-
-          {/* 발표자료 드롭존 — 클릭 또는 드래그&드롭으로 PDF 업로드 */}
+          {/* 발표자료 드롭존 — 이벤트 ID 대신. 클릭/드래그&드롭으로 PDF 업로드 */}
           <div
-            onClick={() => !loading && fileInputRef.current?.click()}
+            onClick={() => !loading && !analyzing && fileInputRef.current?.click()}
             onDragOver={(e) => {
               e.preventDefault();
-              if (!loading) setDragOver(true);
+              if (!loading && !analyzing) setDragOver(true);
             }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
-              if (loading) return;
+              if (loading || analyzing) return;
               const f = e.dataTransfer.files?.[0];
-              if (f && f.type === "application/pdf") setPdfFile(f);
+              if (f && f.type === "application/pdf") onPdfPicked(f);
             }}
             style={{
               border: `1.5px dashed ${dragOver ? "var(--accent)" : "var(--border)"}`,
               borderRadius: 10,
-              padding: "18px 16px",
+              padding: "22px 16px",
               textAlign: "center",
-              cursor: loading ? "default" : "pointer",
+              cursor: loading || analyzing ? "default" : "pointer",
               background: dragOver ? "var(--bg-secondary)" : "transparent",
               transition: "border-color 0.15s, background 0.15s",
             }}
           >
-            {pdfFile ? (
+            {analyzing ? (
+              <span
+                className="body-sm"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span className="spinner" /> 발표자료 분석 중…
+              </span>
+            ) : pdfFile ? (
               <span className="body-sm">📄 {pdfFile.name}</span>
             ) : (
               <span className="body-sm" style={{ color: "var(--fg-secondary)" }}>
@@ -231,16 +275,57 @@ export default function Home() {
             ref={fileInputRef}
             type="file"
             accept="application/pdf"
-            onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => onPdfPicked(e.target.files?.[0] ?? null)}
             disabled={loading}
             style={{ display: "none" }}
           />
+
           <p
             className="body-sm"
             style={{ color: "var(--fg-secondary)", marginTop: -4 }}
           >
-            발표자료를 올리면 용어·맥락을 반영해 <b>통역 품질이 올라갑니다</b> (선택).
+            발표자료 <b>(선택)</b> — 올리면 제목·용어·맥락을 분석해 <b>통역 품질이 올라갑니다</b>.
           </p>
+
+          {analysisError && (
+            <p style={{ color: "var(--error)", fontSize: 13 }}>{analysisError}</p>
+          )}
+
+          {analysis && (
+            <div
+              style={{
+                textAlign: "left",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+              }}
+            >
+              {analysis.title && (
+                <div style={{ fontWeight: 600 }}>{analysis.title}</div>
+              )}
+              {analysis.presenter && (
+                <div className="body-sm" style={{ color: "var(--fg-secondary)" }}>
+                  발표자: {analysis.presenter}
+                </div>
+              )}
+              {analysis.domainSummary && (
+                <p
+                  className="body-sm"
+                  style={{ color: "var(--fg-secondary)", marginTop: 4 }}
+                >
+                  {analysis.domainSummary}
+                </p>
+              )}
+              {analysis.glossary?.length > 0 && (
+                <div className="body-sm" style={{ color: "var(--fg-secondary)" }}>
+                  용어 {analysis.glossary.length}개 인식됨
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
 

@@ -17,7 +17,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import TranslationSessionManager from "@/lib/translation-session-manager";
-import { extractPresentationContext } from "@/lib/glossary-extractor";
+import {
+  extractPresentationContext,
+  type PresentationContext,
+} from "@/lib/glossary-extractor";
 
 // POST /api/sessions — Create a new broadcast session
 export async function POST(req: NextRequest) {
@@ -29,6 +32,8 @@ export async function POST(req: NextRequest) {
     let geminiApiKey = "";
     let pdfBytes: Uint8Array | null = null;
     let pdfMime = "";
+    // 홈에서 이미 /api/extract로 분석해 넘겨준 컨텍스트(있으면 재분석 안 함).
+    let providedContext: PresentationContext | undefined;
 
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData();
@@ -42,6 +47,14 @@ export async function POST(req: NextRequest) {
           if (Array.isArray(arr)) {
             allowedLanguages = arr.filter((l) => typeof l === "string");
           }
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      const ctxRaw = form.get("presentationContext");
+      if (typeof ctxRaw === "string" && ctxRaw.length > 0) {
+        try {
+          providedContext = JSON.parse(ctxRaw) as PresentationContext;
         } catch {
           /* ignore malformed */
         }
@@ -97,8 +110,10 @@ export async function POST(req: NextRequest) {
       await manager.removeAllTranslations(sessionId);
     }
 
-    let presentationContext = undefined;
-    if (pdfBytes) {
+    // 이미 분석된 컨텍스트가 오면 그대로 쓰고(재분석 방지), 아니면 PDF가
+    // 있을 때만 서버에서 추출한다.
+    let presentationContext: PresentationContext | undefined = providedContext;
+    if (!presentationContext && pdfBytes) {
       presentationContext =
         (await extractPresentationContext(pdfBytes, pdfMime, geminiApiKey)) ??
         undefined;
