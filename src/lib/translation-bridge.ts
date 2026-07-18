@@ -42,6 +42,7 @@ import {
 import WebSocket from "ws";
 import { GEMINI_LIVE_MODEL, GEMINI_VOICE } from "./interpret-config";
 import type { PresentationContext } from "./glossary-extractor";
+import { AudioInputPacer, virtualMicrophoneConfig } from "./audio-input-pacer";
 
 export type BridgeStatus = "starting" | "active" | "error" | "closed";
 
@@ -89,6 +90,9 @@ export class TranslationBridge {
   // 이전 리더 루프를 무효화한다.
   private activePipeSid: string | null = null;
   private pipeGeneration = 0;
+  // LiveKit이 불규칙하게 주는 프레임을 균등한 20ms 청크로 다시 포장해 Gemini로
+  // 흘려보내는 페이서. translate 모델의 지터/단어잘림/발화종료-오인을 막는다.
+  private pacer: AudioInputPacer | null = null;
 
   // When true, this bridge only transcribes the organizer's own speech (no
   // translated audio track is published). Used for the host's Korean captions.
@@ -173,6 +177,11 @@ export class TranslationBridge {
     if (this.room) {
       await this.room.disconnect();
       this.room = null;
+    }
+
+    if (this.pacer) {
+      this.pacer.stop();
+      this.pacer = null;
     }
 
     this.audioSource = null;
@@ -758,6 +767,21 @@ export class TranslationBridge {
       `[TranslationBridge:${this.targetLanguage}] Subscribed to organizer audio track ${track.sid ?? "(no sid)"}, piping to Gemini (gen ${gen})`
     );
 
+    // 이전 트랙의 페이서가 남아 있으면 정리한다(재발행 등으로 교체될 때).
+    if (this.pacer) {
+      this.pacer.stop();
+    }
+    // LiveKit 프레임을 버퍼에 모아 균등한 20ms 청크로 Gemini에 송출한다.
+    // 버퍼가 마르면(발표자가 쉬면) 무음을 주입해 발화종료 오인을 막는다.
+    this.pacer = new AudioInputPacer(
+      virtualMicrophoneConfig(this.inputSampleRate)
+    );
+    this.pacer.start((chunk) => {
+      // 세대가 바뀌었으면(트랙 교체) 이 페이서의 출력은 무시될 수 있으나,
+      // 교체 시 위에서 stop()으로 타이머를 끄므로 여기까지 오지 않는다.
+      this.sendAudioToGemini(chunk);
+    });
+
     const audioStream = new AudioStream(track, {
       sampleRate: this.inputSampleRate,
       numChannels: this.channels,
@@ -771,7 +795,9 @@ export class TranslationBridge {
         const { done, value } = await reader.read();
         // 새 리더로 교체됐으면(세대 불일치) 이 루프는 조용히 종료한다.
         if (done || gen !== this.pipeGeneration) break;
-        this.sendAudioToGemini(value);
+        // 즉시 전송하지 않고 페이서 버퍼에 넣는다. 실제 송출은 페이서 타이머가
+        // 20ms 간격으로 수행한다.
+        this.pacer?.push(value.data);
       }
     };
 
@@ -783,7 +809,7 @@ export class TranslationBridge {
     });
   }
 
-  private sendAudioToGemini(frame: AudioFrame): void {
+  private sendAudioToGemini(int16Data: Int16Array): void {
     if (
       !this.geminiWs ||
       this.geminiWs.readyState !== WebSocket.OPEN ||
@@ -793,15 +819,13 @@ export class TranslationBridge {
     }
 
     try {
-      // Convert AudioFrame's Int16Array data to base64
-      const int16Data = frame.data;
       const buffer = Buffer.from(int16Data.buffer, int16Data.byteOffset, int16Data.byteLength);
       const base64 = buffer.toString("base64");
 
       this.framesSentToGemini++;
       if (this.framesSentToGemini <= 3 || this.framesSentToGemini % 500 === 0) {
         console.log(
-          `[TranslationBridge:${this.targetLanguage}] Sent audio frame #${this.framesSentToGemini} to Gemini (${base64.length} bytes base64, ${int16Data.length} samples)`
+          `[TranslationBridge:${this.targetLanguage}] Sent audio chunk #${this.framesSentToGemini} to Gemini (${base64.length} bytes base64, ${int16Data.length} samples)`
         );
       }
 
