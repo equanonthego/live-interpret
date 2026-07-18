@@ -294,6 +294,12 @@ export default function Home() {
                 >
                   drag and drop / click
                 </span>
+                <span
+                  className="mono"
+                  style={{ color: "var(--fg-secondary)", fontSize: 11 }}
+                >
+                  PDF · HTML
+                </span>
               </>
             )}
           </div>
@@ -311,12 +317,6 @@ export default function Home() {
             style={{ color: "var(--fg-secondary)", marginTop: -2 }}
           >
             통역이 더 정확해집니다
-          </p>
-          <p
-            className="mono"
-            style={{ color: "var(--fg-secondary)", fontSize: 11, marginTop: -8 }}
-          >
-            PDF · HTML (PPT·키노트는 PDF로 내보내 올려주세요)
           </p>
 
           {analysisError && (
