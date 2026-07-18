@@ -99,6 +99,8 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
   };
 
   const [allowedLanguages, setAllowedLanguages] = useState<string[] | undefined>(undefined);
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [sessionPresenter, setSessionPresenter] = useState("");
 
   useEffect(() => {
     async function fetchSessionDetails() {
@@ -107,6 +109,8 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
         if (res.ok) {
           const data = await res.json();
           setAllowedLanguages(data.allowedLanguages);
+          setSessionTitle(data.title || "");
+          setSessionPresenter(data.presenter || "");
         }
       } catch (err) {
         console.error("Failed to fetch session details:", err);
@@ -500,6 +504,18 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
       </div>
 
       <hr className="rule" />
+
+      {/* Session title / presenter (from uploaded presentation) */}
+      {(sessionTitle || sessionPresenter) && (
+        <div
+          className="body-sm"
+          style={{ color: "var(--fg-secondary)", padding: "12px 0 0" }}
+        >
+          {sessionTitle}
+          {sessionTitle && sessionPresenter ? " — " : ""}
+          {sessionPresenter}
+        </div>
+      )}
 
       {/* Language selector */}
       <div style={{ padding: "28px 0" }}>

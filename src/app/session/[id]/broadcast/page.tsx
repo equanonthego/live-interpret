@@ -165,6 +165,19 @@ function BroadcastControls({
     ? `${joinOrigin}/session/${sessionId}/watch`
     : "";
 
+  // 발표자료에서 추출한 제목·발표자(있으면)를 세션 정보에서 받아 표시한다.
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [sessionPresenter, setSessionPresenter] = useState("");
+  useEffect(() => {
+    fetch(`/api/sessions/${sessionId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setSessionTitle(d.title || "");
+        setSessionPresenter(d.presenter || "");
+      })
+      .catch(() => {});
+  }, [sessionId]);
+
   const fetchTranslations = useCallback(async () => {
     try {
       const res = await fetch(`/api/translate/status?sessionId=${sessionId}`);
@@ -515,6 +528,16 @@ function BroadcastControls({
           <em>방송</em> 중
         </h1>
         <p className="mono">{sessionId}</p>
+        {(sessionTitle || sessionPresenter) && (
+          <p
+            className="body-sm"
+            style={{ color: "var(--fg-secondary)", marginTop: 8 }}
+          >
+            {sessionTitle}
+            {sessionTitle && sessionPresenter ? " — " : ""}
+            {sessionPresenter}
+          </p>
+        )}
       </div>
 
       {/* Audio Inputs */}
