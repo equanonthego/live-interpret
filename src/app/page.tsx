@@ -281,12 +281,12 @@ export default function Home() {
                   <path d="m7 9 5-5 5 5" />
                   <path d="M5 20h14" />
                 </svg>
-                <span style={{ fontWeight: 600 }}>발표자료 올리기</span>
+                <span style={{ fontWeight: 600 }}>발표자료 (선택사항)</span>
                 <span
                   className="mono"
                   style={{ color: "var(--fg-secondary)", fontSize: 12 }}
                 >
-                  드래그 &amp; 드롭 · 클릭 · PDF
+                  drag and drop / click
                 </span>
               </>
             )}
@@ -304,7 +304,7 @@ export default function Home() {
             className="body-sm"
             style={{ color: "var(--fg-secondary)", marginTop: -2 }}
           >
-            선택 사항 · 넣으면 <b>통역이 더 정확</b>해집니다
+            통역이 더 정확해집니다
           </p>
 
           {analysisError && (
