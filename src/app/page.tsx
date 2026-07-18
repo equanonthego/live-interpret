@@ -243,32 +243,52 @@ export default function Home() {
               if (f && f.type === "application/pdf") onPdfPicked(f);
             }}
             style={{
-              border: `1.5px dashed ${dragOver ? "var(--accent)" : "var(--border)"}`,
-              borderRadius: 10,
-              padding: "22px 16px",
+              border: `1.5px dashed ${dragOver ? "#7fb3ec" : "#c9def5"}`,
+              borderRadius: 12,
+              padding: "26px 16px",
               textAlign: "center",
               cursor: loading || analyzing ? "default" : "pointer",
-              background: dragOver ? "var(--bg-secondary)" : "transparent",
+              background: dragOver ? "#f0f7ff" : "transparent",
               transition: "border-color 0.15s, background 0.15s",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 8,
             }}
           >
             {analyzing ? (
               <span
                 className="body-sm"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
               >
-                <span className="spinner" /> 발표자료 분석 중…
+                <span className="spinner" /> 분석 중…
               </span>
             ) : pdfFile ? (
               <span className="body-sm">📄 {pdfFile.name}</span>
             ) : (
-              <span className="body-sm" style={{ color: "var(--fg-secondary)" }}>
-                발표자료(PDF)를 여기에 <b>드래그</b>하거나 <b>클릭</b>해서 올리기
-              </span>
+              <>
+                <svg
+                  width="26"
+                  height="26"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#7fb3ec"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 16V4" />
+                  <path d="m7 9 5-5 5 5" />
+                  <path d="M5 20h14" />
+                </svg>
+                <span style={{ fontWeight: 600 }}>발표자료 올리기</span>
+                <span
+                  className="mono"
+                  style={{ color: "var(--fg-secondary)", fontSize: 12 }}
+                >
+                  드래그 &amp; 드롭 · 클릭 · PDF
+                </span>
+              </>
             )}
           </div>
           <input
@@ -282,9 +302,9 @@ export default function Home() {
 
           <p
             className="body-sm"
-            style={{ color: "var(--fg-secondary)", marginTop: -4 }}
+            style={{ color: "var(--fg-secondary)", marginTop: -2 }}
           >
-            발표자료 <b>(선택)</b> — 올리면 제목·용어·맥락을 분석해 <b>통역 품질이 올라갑니다</b>.
+            선택 사항 · 넣으면 <b>통역이 더 정확</b>해집니다
           </p>
 
           {analysisError && (
