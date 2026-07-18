@@ -1,0 +1,122 @@
+import { GEMINI_EXTRACT_MODEL } from "./interpret-config";
+
+export interface GlossaryTerm {
+  term: string; // 소스(한국어) 용어
+  note: string; // 의미 + 번역 처리 지침 (언어 중립)
+}
+
+export interface PresentationContext {
+  title: string; // 없으면 ""
+  presenter: string; // 없으면 ""
+  domainSummary: string;
+  glossary: GlossaryTerm[];
+}
+
+const EXTRACT_PROMPT = `You are analyzing a lecture's slide deck / handout to help a live interpreter.
+Return JSON with these fields:
+- "title": the presentation title exactly as written, or "" if none is found.
+- "presenter": the speaker/author/presenter name exactly as written, or "" if none.
+- "domainSummary": 2-4 sentences summarizing the subject domain, for translation context.
+- "glossary": array of the key terms whose consistent translation matters. For each: "term" (the term in its original language) and "note" (its meaning and how it should be handled when translating, language-neutral — do NOT hardcode a specific target language).
+Only output the JSON object.`;
+
+// Gemini Flash(REST generateContent)로 PDF를 분석해 PresentationContext 반환.
+// 어떤 이유로든(잘못된 PDF, API 오류, JSON 파싱 실패, 타임아웃) 실패하면 null.
+export async function extractPresentationContext(
+  pdfBytes: Uint8Array,
+  mime: string,
+  geminiApiKey: string
+): Promise<PresentationContext | null> {
+  try {
+    const base64 = Buffer.from(pdfBytes).toString("base64");
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_EXTRACT_MODEL}:generateContent?key=${encodeURIComponent(
+      geminiApiKey
+    )}`;
+    const body = {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { inlineData: { mimeType: mime, data: base64 } },
+            { text: EXTRACT_PROMPT },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            presenter: { type: "STRING" },
+            domainSummary: { type: "STRING" },
+            glossary: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  term: { type: "STRING" },
+                  note: { type: "STRING" },
+                },
+                required: ["term", "note"],
+              },
+            },
+          },
+          required: ["title", "presenter", "domainSummary", "glossary"],
+        },
+      },
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!res.ok) {
+      console.error(
+        `[glossary-extractor] Flash HTTP ${res.status} (model ${GEMINI_EXTRACT_MODEL})`
+      );
+      return null;
+    }
+
+    const data = await res.json();
+    const text: string | undefined =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      console.error("[glossary-extractor] Empty Flash response");
+      return null;
+    }
+
+    const parsed = JSON.parse(text);
+    const glossary: GlossaryTerm[] = Array.isArray(parsed.glossary)
+      ? parsed.glossary
+          .filter(
+            (g: unknown): g is GlossaryTerm =>
+              !!g &&
+              typeof (g as GlossaryTerm).term === "string" &&
+              typeof (g as GlossaryTerm).note === "string"
+          )
+          .map((g: GlossaryTerm) => ({ term: g.term, note: g.note }))
+      : [];
+
+    return {
+      title: typeof parsed.title === "string" ? parsed.title : "",
+      presenter: typeof parsed.presenter === "string" ? parsed.presenter : "",
+      domainSummary:
+        typeof parsed.domainSummary === "string" ? parsed.domainSummary : "",
+      glossary,
+    };
+  } catch (err) {
+    console.error("[glossary-extractor] extraction failed:", err);
+    return null;
+  }
+}
