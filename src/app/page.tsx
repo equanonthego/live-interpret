@@ -292,13 +292,13 @@ export default function Home() {
                   className="mono"
                   style={{ color: "var(--fg-secondary)", fontSize: 12 }}
                 >
-                  drag and drop / click
+                  PDF · HTML
                 </span>
                 <span
                   className="mono"
                   style={{ color: "var(--fg-secondary)", fontSize: 11 }}
                 >
-                  PDF · HTML
+                  drag and drop / click
                 </span>
               </>
             )}
