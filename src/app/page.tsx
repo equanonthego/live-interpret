@@ -26,10 +26,9 @@ export default function Home() {
   const [eventId, setEventId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const [geminiApiKey, setGeminiApiKey] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return localStorage.getItem("gemini_api_key") || "";
-  });
+  // 페이지가 뜰 때 API 키 입력창은 항상 비어 있는 상태로 시작한다.
+  // (이전에는 localStorage에 저장된 키를 자동으로 채워 넣었다.)
+  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [keyStatus, setKeyStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [keyError, setKeyError] = useState<string | null>(null);
 
@@ -55,7 +54,6 @@ export default function Home() {
       const data = await res.json();
       if (data.ok) {
         setKeyStatus("ok");
-        localStorage.setItem("gemini_api_key", key);
       } else {
         setKeyStatus("fail");
         setKeyError(data.error || "키 검증에 실패했습니다.");
@@ -114,10 +112,11 @@ export default function Home() {
         {/* Subtitle */}
         <p
           className="body enter-d1"
-          style={{ maxWidth: 360, margin: "0 auto 48px" }}
+          style={{ maxWidth: 480, margin: "0 auto 48px" }}
         >
-          당신의 목소리를 송출하세요. 청중은 각자 언어를 고르고,
-          번역은 필요할 때 실시간으로 시작됩니다.
+          당신의 목소리를 송출하세요.
+          <br />
+          청중은 각자 언어를 고르고, 번역은 필요할 때 실시간으로 시작됩니다.
         </p>
 
         {/* Inputs */}
