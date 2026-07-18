@@ -24,6 +24,7 @@ export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [eventId, setEventId] = useState("");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 페이지가 뜰 때 API 키 입력창은 항상 비어 있는 상태로 시작한다.
@@ -68,15 +69,21 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
+      const form = new FormData();
+      form.append("organizerName", "host");
+      form.append("eventId", eventId);
+      form.append(
+        "allowedLanguages",
+        JSON.stringify(DEFAULT_INTERPRET_LANGUAGES)
+      );
+      form.append("geminiApiKey", geminiApiKey.trim());
+      if (pdfFile) form.append("presentation", pdfFile);
+
+      // FormData 사용 시 Content-Type을 직접 지정하지 않는다(브라우저가
+      // multipart boundary를 포함해 자동 설정).
       const res = await fetch("/api/sessions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizerName: "host",
-          eventId,
-          allowedLanguages: DEFAULT_INTERPRET_LANGUAGES,
-          geminiApiKey: geminiApiKey.trim(),
-        }),
+        body: form,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -184,6 +191,19 @@ export default function Home() {
             style={{ textAlign: "center" }}
             disabled={loading}
           />
+
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
+            disabled={loading}
+            style={{ fontSize: 13 }}
+          />
+          {pdfFile && (
+            <p className="body-sm" style={{ color: "var(--fg-secondary)" }}>
+              발표자료: {pdfFile.name}
+            </p>
+          )}
 
         </div>
 
