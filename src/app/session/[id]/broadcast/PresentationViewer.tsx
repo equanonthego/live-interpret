@@ -21,6 +21,7 @@ export default function PresentationViewer({
 }: Props) {
   const isPdf = mime.includes("pdf");
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [blobUrl, setBlobUrl] = useState<string>("");
   // pdfjs 문서 객체(동적 로드라 타입은 느슨하게).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,8 +150,22 @@ export default function PresentationViewer({
       ) : (
         blobUrl && (
           <iframe
+            ref={iframeRef}
             src={blobUrl}
             title="presentation"
+            onLoad={() => {
+              // HTML 발표자료는 별도 브라우징 컨텍스트(iframe)라, 부모 window의
+              // keydown 리스너에 ESC가 도달하지 않는다. blob URL은 same-origin
+              // 이므로 iframe 문서에도 ESC 리스너를 직접 달아 닫힘을 보장한다.
+              try {
+                const doc = iframeRef.current?.contentDocument;
+                doc?.addEventListener("keydown", (e: KeyboardEvent) => {
+                  if (e.key === "Escape") onCloseRef.current();
+                });
+              } catch {
+                // 혹시 cross-origin이면 접근 불가 — 보이는 닫기 버튼으로 대체된다.
+              }
+            }}
             style={{
               width: "100vw",
               height: "100vh",
@@ -207,17 +222,41 @@ export default function PresentationViewer({
         <SessionQRCode url={joinUrl} size={96} />
       </div>
 
-      {/* 안내 */}
-      <div
+      {/* 닫기 버튼 — iframe(HTML)에서 ESC가 포커스 문제로 안 먹거나, 터치/모바일
+          처럼 키보드가 없는 상황에서도 항상 빠져나갈 수 있게 항상 보이는 버튼. */}
+      <button
+        onClick={() => onCloseRef.current()}
+        aria-label="닫기"
         style={{
           position: "absolute",
           top: 16,
           right: 20,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          background: "rgba(0,0,0,0.55)",
+          color: "#fff",
+          border: "1px solid rgba(255,255,255,0.35)",
+          borderRadius: 8,
+          padding: "8px 14px",
+          fontSize: 14,
+          cursor: "pointer",
+        }}
+      >
+        ✕ 닫기
+      </button>
+
+      {/* 키보드 안내 (PDF일 때만 페이지 이동 안내 포함) */}
+      <div
+        style={{
+          position: "absolute",
+          top: 20,
+          left: 20,
           color: "rgba(255,255,255,0.6)",
           fontSize: 12,
         }}
       >
-        ESC 나가기 · ←/→ 페이지
+        {isPdf ? "ESC 나가기 · ←/→ 페이지" : "ESC 또는 ✕ 로 나가기"}
       </div>
     </div>
   );
