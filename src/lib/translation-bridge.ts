@@ -443,6 +443,11 @@ export class TranslationBridge {
       setup: {
         model: `models/${this.geminiModel}`,
         outputAudioTranscription: {},
+        // 호스트 자막(transcribeOnly) 브릿지는 번역 결과가 아니라 발화자가
+        // 실제로 말한 원문(raw STT)을 자막으로 써야 하므로 입력 오디오
+        // transcription을 켠다. handleGeminiMessage에서 inputTranscription을
+        // 읽는다. (출력 transcription은 ko→ko 재번역이라 원문이 뭉개진다.)
+        ...(this.transcribeOnly ? { inputAudioTranscription: {} } : {}),
         generationConfig: {
           responseModalities: ["AUDIO"],
           translationConfig: {
@@ -534,9 +539,16 @@ export class TranslationBridge {
         }
       }
 
-      // Handle output transcription (separate field from modelTurn)
-      if (serverContent?.outputTranscription?.text) {
-        const text = serverContent.outputTranscription.text;
+      // 자막 텍스트의 출처를 고른다. 호스트 자막(transcribeOnly) 브릿지는
+      // 입력 transcription(발화자가 실제로 말한 원문 STT)을, 일반 번역
+      // 브릿지는 출력 transcription(번역 결과)을 쓴다.
+      const transcription = this.transcribeOnly
+        ? serverContent?.inputTranscription
+        : serverContent?.outputTranscription;
+
+      // Handle transcription (separate field from modelTurn)
+      if (transcription?.text) {
+        const text = transcription.text;
         const isInterim = !serverContent.turnComplete;
 
         if (isInterim) {
