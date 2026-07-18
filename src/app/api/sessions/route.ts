@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     let geminiApiKey = "";
     let pdfBytes: Uint8Array | null = null;
     let pdfMime = "";
+    let pdfName = "";
     // 홈에서 이미 /api/extract로 분석해 넘겨준 컨텍스트(있으면 재분석 안 함).
     let providedContext: PresentationContext | undefined;
 
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       if (file && file instanceof File && file.size > 0) {
         pdfBytes = new Uint8Array(await file.arrayBuffer());
         pdfMime = file.type || "application/pdf";
+        pdfName = file.name || "presentation";
       }
     } else {
       const body = await req.json().catch(() => ({}));
@@ -119,12 +121,17 @@ export async function POST(req: NextRequest) {
         undefined;
     }
 
+    const presentationFile = pdfBytes
+      ? { name: pdfName, mime: pdfMime, bytes: Buffer.from(pdfBytes) }
+      : undefined;
+
     manager.createSession(
       sessionId,
       organizerIdentity,
       allowedLanguages,
       geminiApiKey,
-      presentationContext
+      presentationContext,
+      presentationFile
     );
 
     // Build the attendee join URL

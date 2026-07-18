@@ -34,12 +34,15 @@ export async function GET(
 
   // geminiApiKey(민감)와 presentationContext(용어집 전체)는 클라이언트에
   // 노출하지 않는다. 표시에 필요한 title·presenter만 명시적으로 내보낸다.
-  const { geminiApiKey: _k, presentationContext, ...safe } = session;
+  const { geminiApiKey: _k, presentationContext, presentationFile, ...safe } =
+    session;
   void _k;
   return NextResponse.json({
     ...safe,
     title: presentationContext?.title ?? "",
     presenter: presentationContext?.presenter ?? "",
+    hasPresentation: !!presentationFile,
+    presentationMime: presentationFile?.mime ?? "",
     translations,
   });
 }

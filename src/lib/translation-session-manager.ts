@@ -50,6 +50,8 @@ export interface SessionInfo {
   geminiApiKey: string;
   // 발표자료에서 추출한 제목·발표자·도메인 요약·용어집. 없을 수 있음.
   presentationContext?: PresentationContext;
+  // 발표자료 원본 파일(전체보기 렌더용). 서버 메모리에만 보관.
+  presentationFile?: { name: string; mime: string; bytes: Buffer };
   // 발언권을 쥔 청자 identity. 없으면(undefined) 강의자만 발언 중.
   currentSpeaker?: string;
   // 손든 청자 대기열 (순서대로).
@@ -109,7 +111,8 @@ class TranslationSessionManager {
     organizerIdentity: string,
     allowedLanguages: string[] | undefined,
     geminiApiKey: string,
-    presentationContext?: PresentationContext
+    presentationContext?: PresentationContext,
+    presentationFile?: { name: string; mime: string; bytes: Buffer }
   ): SessionInfo {
     const info: SessionInfo = {
       sessionId,
@@ -118,6 +121,7 @@ class TranslationSessionManager {
       allowedLanguages,
       geminiApiKey,
       presentationContext,
+      presentationFile,
       handRaised: [],
     };
     this.sessions.set(sessionId, info);
