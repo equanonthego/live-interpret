@@ -20,10 +20,6 @@ export default function PresentationViewer({
   onClose,
 }: Props) {
   const isPdf = mime.includes("pdf");
-  // 포털로 document.body에 렌더해야 broadcast의 .container(max-width) +
-  // .enter(transform)에 갇히지 않고 진짜 전체화면이 된다.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [blobUrl, setBlobUrl] = useState<string>("");
   // pdfjs 문서 객체(동적 로드라 타입은 느슨하게).
@@ -105,7 +101,9 @@ export default function PresentationViewer({
 
   const lastTwo = captions.slice(-2);
 
-  if (!mounted) return null;
+  // 포털로 document.body에 렌더해야 broadcast의 .container(max-width) +
+  // .enter(transform 잔존)에 갇히지 않고 진짜 전체화면이 된다.
+  if (typeof document === "undefined") return null;
 
   const overlay = (
     <div
