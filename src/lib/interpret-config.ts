@@ -11,3 +11,7 @@ export const GEMINI_LIVE_MODEL = "gemini-3.5-live-translate-preview";
 
 // 발표자료(PDF)에서 제목·발표자·용어집을 추출하는 모델. Live 모델과 별개.
 export const GEMINI_EXTRACT_MODEL = "gemini-3.5-flash";
+
+// 통역 출력 음성을 한 목소리로 고정하는 프리빌트 음성 이름. 미설정 시 모델이
+// 발화마다 남/여를 오간다. (Gemini 프리빌트: Kore, Puck, Charon, Aoede 등)
+export const GEMINI_VOICE = "Kore";

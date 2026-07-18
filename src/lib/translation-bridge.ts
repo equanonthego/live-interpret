@@ -40,7 +40,7 @@ import {
   AudioStream,
 } from "@livekit/rtc-node";
 import WebSocket from "ws";
-import { GEMINI_LIVE_MODEL } from "./interpret-config";
+import { GEMINI_LIVE_MODEL, GEMINI_VOICE } from "./interpret-config";
 import type { PresentationContext } from "./glossary-extractor";
 
 export type BridgeStatus = "starting" | "active" | "error" | "closed";
@@ -492,6 +492,13 @@ export class TranslationBridge {
         },
         generationConfig: {
           responseModalities: ["AUDIO"],
+          // 통역 음성을 한 목소리로 고정한다. 지정하지 않으면 모델이 발화마다
+          // 남/여 목소리를 오가며 바꿔 듣기 불편하다.
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: GEMINI_VOICE },
+            },
+          },
           translationConfig: {
             targetLanguageCode: this.targetLanguage,
             echoTargetLanguage: true,
