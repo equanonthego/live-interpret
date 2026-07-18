@@ -25,6 +25,7 @@
 
 import { TranslationBridge, BridgeStatus } from "./translation-bridge";
 import { SOURCE_LANGUAGE } from "./interpret-config";
+import type { PresentationContext } from "./glossary-extractor";
 
 export interface TranslationInfo {
   language: string;
@@ -47,6 +48,8 @@ export interface SessionInfo {
   // 이 세션의 통역을 돌릴 방송자 소유 Gemini 키. 서버 메모리에만 존재하며
   // 디스크·로그에 절대 기록하지 않는다.
   geminiApiKey: string;
+  // 발표자료에서 추출한 제목·발표자·도메인 요약·용어집. 없을 수 있음.
+  presentationContext?: PresentationContext;
   // 발언권을 쥔 청자 identity. 없으면(undefined) 강의자만 발언 중.
   currentSpeaker?: string;
   // 손든 청자 대기열 (순서대로).
@@ -96,6 +99,7 @@ class TranslationSessionManager {
       livekitUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
       livekitApiKey: process.env.LIVEKIT_API_KEY!,
       livekitApiSecret: process.env.LIVEKIT_API_SECRET!,
+      presentationContext: session?.presentationContext,
     };
   }
 
@@ -104,7 +108,8 @@ class TranslationSessionManager {
     sessionId: string,
     organizerIdentity: string,
     allowedLanguages: string[] | undefined,
-    geminiApiKey: string
+    geminiApiKey: string,
+    presentationContext?: PresentationContext
   ): SessionInfo {
     const info: SessionInfo = {
       sessionId,
@@ -112,6 +117,7 @@ class TranslationSessionManager {
       createdAt: new Date(),
       allowedLanguages,
       geminiApiKey,
+      presentationContext,
       handRaised: [],
     };
     this.sessions.set(sessionId, info);
