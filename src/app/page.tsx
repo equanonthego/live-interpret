@@ -16,7 +16,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_INTERPRET_LANGUAGES } from "@/lib/interpret-config";
 
@@ -25,6 +25,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [eventId, setEventId] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   // 페이지가 뜰 때 API 키 입력창은 항상 비어 있는 상태로 시작한다.
@@ -192,18 +194,53 @@ export default function Home() {
             disabled={loading}
           />
 
+          {/* 발표자료 드롭존 — 클릭 또는 드래그&드롭으로 PDF 업로드 */}
+          <div
+            onClick={() => !loading && fileInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!loading) setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (loading) return;
+              const f = e.dataTransfer.files?.[0];
+              if (f && f.type === "application/pdf") setPdfFile(f);
+            }}
+            style={{
+              border: `1.5px dashed ${dragOver ? "var(--accent)" : "var(--border)"}`,
+              borderRadius: 10,
+              padding: "18px 16px",
+              textAlign: "center",
+              cursor: loading ? "default" : "pointer",
+              background: dragOver ? "var(--bg-secondary)" : "transparent",
+              transition: "border-color 0.15s, background 0.15s",
+            }}
+          >
+            {pdfFile ? (
+              <span className="body-sm">📄 {pdfFile.name}</span>
+            ) : (
+              <span className="body-sm" style={{ color: "var(--fg-secondary)" }}>
+                발표자료(PDF)를 여기에 <b>드래그</b>하거나 <b>클릭</b>해서 올리기
+              </span>
+            )}
+          </div>
           <input
+            ref={fileInputRef}
             type="file"
             accept="application/pdf"
             onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)}
             disabled={loading}
-            style={{ fontSize: 13 }}
+            style={{ display: "none" }}
           />
-          {pdfFile && (
-            <p className="body-sm" style={{ color: "var(--fg-secondary)" }}>
-              발표자료: {pdfFile.name}
-            </p>
-          )}
+          <p
+            className="body-sm"
+            style={{ color: "var(--fg-secondary)", marginTop: -4 }}
+          >
+            발표자료를 올리면 용어·맥락을 반영해 <b>통역 품질이 올라갑니다</b> (선택).
+          </p>
 
         </div>
 
