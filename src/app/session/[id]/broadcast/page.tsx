@@ -25,6 +25,7 @@ import {
 import "@livekit/components-styles";
 import { Track, RoomEvent } from "livekit-client";
 import SessionQRCode from "@/components/SessionQRCode";
+import PresentationViewer from "./PresentationViewer";
 import { getLanguageByCode } from "@/lib/languages";
 import { SOURCE_LANGUAGE } from "@/lib/interpret-config";
 
@@ -164,6 +165,24 @@ function BroadcastControls({
   const joinUrl = joinOrigin
     ? `${joinOrigin}/session/${sessionId}/watch`
     : "";
+
+  // 발표자료에서 추출한 제목·발표자(있으면)를 세션 정보에서 받아 표시한다.
+  const [sessionTitle, setSessionTitle] = useState("");
+  const [sessionPresenter, setSessionPresenter] = useState("");
+  const [hasPresentation, setHasPresentation] = useState(false);
+  const [presentationMime, setPresentationMime] = useState("");
+  const [showViewer, setShowViewer] = useState(false);
+  useEffect(() => {
+    fetch(`/api/sessions/${sessionId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setSessionTitle(d.title || "");
+        setSessionPresenter(d.presenter || "");
+        setHasPresentation(!!d.hasPresentation);
+        setPresentationMime(d.presentationMime || "");
+      })
+      .catch(() => {});
+  }, [sessionId]);
 
   const fetchTranslations = useCallback(async () => {
     try {
@@ -509,12 +528,40 @@ function BroadcastControls({
 
   return (
     <div className="container enter">
+      {showViewer && (
+        <PresentationViewer
+          sessionId={sessionId}
+          mime={presentationMime}
+          joinUrl={joinUrl}
+          captions={hostCaptions.map((c) => c.text)}
+          onClose={() => setShowViewer(false)}
+        />
+      )}
       {/* Header */}
       <div style={{ marginBottom: 48 }}>
         <h1 className="display display-lg" style={{ marginBottom: 8 }}>
           <em>방송</em> 중
         </h1>
         <p className="mono">{sessionId}</p>
+        {(sessionTitle || sessionPresenter) && (
+          <p
+            className="body-sm"
+            style={{ color: "var(--fg-secondary)", marginTop: 8 }}
+          >
+            {sessionTitle}
+            {sessionTitle && sessionPresenter ? " — " : ""}
+            {sessionPresenter}
+          </p>
+        )}
+        {hasPresentation && (
+          <button
+            className="btn btn-outline"
+            style={{ marginTop: 12 }}
+            onClick={() => setShowViewer(true)}
+          >
+            발표자료 전체보기
+          </button>
+        )}
       </div>
 
       {/* Audio Inputs */}

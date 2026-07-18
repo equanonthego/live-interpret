@@ -17,21 +17,75 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import TranslationSessionManager from "@/lib/translation-session-manager";
+import {
+  extractPresentationContext,
+  type PresentationContext,
+} from "@/lib/glossary-extractor";
+import { MAX_PRESENTATION_BYTES } from "@/lib/interpret-config";
 
 // POST /api/sessions — Create a new broadcast session
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const organizerName = body.organizerName || "organizer";
-    const eventId = body.eventId;
-
+    const contentType = req.headers.get("content-type") || "";
+    let organizerName = "organizer";
+    let eventId: string | undefined;
     let allowedLanguages: string[] | undefined = undefined;
-    if (Array.isArray(body.allowedLanguages)) {
-      allowedLanguages = body.allowedLanguages.filter((l: any) => typeof l === "string");
+    let geminiApiKey = "";
+    let pdfBytes: Uint8Array | null = null;
+    let pdfMime = "";
+    let pdfName = "";
+    // 홈에서 이미 /api/extract로 분석해 넘겨준 컨텍스트(있으면 재분석 안 함).
+    let providedContext: PresentationContext | undefined;
+
+    if (contentType.includes("multipart/form-data")) {
+      const form = await req.formData();
+      organizerName = (form.get("organizerName") as string) || "organizer";
+      eventId = (form.get("eventId") as string) || undefined;
+      geminiApiKey = ((form.get("geminiApiKey") as string) || "").trim();
+      const langsRaw = form.get("allowedLanguages");
+      if (typeof langsRaw === "string" && langsRaw.length > 0) {
+        try {
+          const arr = JSON.parse(langsRaw);
+          if (Array.isArray(arr)) {
+            allowedLanguages = arr.filter((l) => typeof l === "string");
+          }
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      const ctxRaw = form.get("presentationContext");
+      if (typeof ctxRaw === "string" && ctxRaw.length > 0) {
+        try {
+          providedContext = JSON.parse(ctxRaw) as PresentationContext;
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      const file = form.get("presentation");
+      // 너무 큰 파일은 무시한다(발표자료는 선택이므로 세션 생성은 계속).
+      if (
+        file &&
+        file instanceof File &&
+        file.size > 0 &&
+        file.size <= MAX_PRESENTATION_BYTES
+      ) {
+        pdfBytes = new Uint8Array(await file.arrayBuffer());
+        pdfMime = file.type || "application/pdf";
+        pdfName = file.name || "presentation";
+      }
+    } else {
+      const body = await req.json().catch(() => ({}));
+      organizerName = body.organizerName || "organizer";
+      eventId = body.eventId;
+      if (Array.isArray(body.allowedLanguages)) {
+        allowedLanguages = body.allowedLanguages.filter(
+          (l: unknown) => typeof l === "string"
+        );
+      }
+      geminiApiKey =
+        typeof body.geminiApiKey === "string" ? body.geminiApiKey.trim() : "";
     }
 
-    const geminiApiKey =
-      typeof body.geminiApiKey === "string" ? body.geminiApiKey.trim() : "";
     if (!geminiApiKey) {
       return NextResponse.json(
         { error: "Missing geminiApiKey" },
@@ -65,7 +119,27 @@ export async function POST(req: NextRequest) {
       await manager.removeAllTranslations(sessionId);
     }
 
-    manager.createSession(sessionId, organizerIdentity, allowedLanguages, geminiApiKey);
+    // 이미 분석된 컨텍스트가 오면 그대로 쓰고(재분석 방지), 아니면 PDF가
+    // 있을 때만 서버에서 추출한다.
+    let presentationContext: PresentationContext | undefined = providedContext;
+    if (!presentationContext && pdfBytes) {
+      presentationContext =
+        (await extractPresentationContext(pdfBytes, pdfMime, geminiApiKey)) ??
+        undefined;
+    }
+
+    const presentationFile = pdfBytes
+      ? { name: pdfName, mime: pdfMime, bytes: Buffer.from(pdfBytes) }
+      : undefined;
+
+    manager.createSession(
+      sessionId,
+      organizerIdentity,
+      allowedLanguages,
+      geminiApiKey,
+      presentationContext,
+      presentationFile
+    );
 
     // Build the attendee join URL
     const protocol = req.headers.get("x-forwarded-proto") || "http";
@@ -77,6 +151,8 @@ export async function POST(req: NextRequest) {
       organizerIdentity,
       joinUrl,
       broadcastUrl: `${protocol}://${host}/session/${sessionId}/broadcast`,
+      title: presentationContext?.title ?? "",
+      presenter: presentationContext?.presenter ?? "",
     });
   } catch (error) {
     console.error("Error creating session:", error);

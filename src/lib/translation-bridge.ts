@@ -40,7 +40,8 @@ import {
   AudioStream,
 } from "@livekit/rtc-node";
 import WebSocket from "ws";
-import { GEMINI_LIVE_MODEL } from "./interpret-config";
+import { GEMINI_LIVE_MODEL, GEMINI_VOICE } from "./interpret-config";
+import type { PresentationContext } from "./glossary-extractor";
 
 export type BridgeStatus = "starting" | "active" | "error" | "closed";
 
@@ -93,6 +94,9 @@ export class TranslationBridge {
   // translated audio track is published). Used for the host's Korean captions.
   private readonly transcribeOnly: boolean;
 
+  // 발표자료에서 추출한 맥락/용어집. 있으면 systemInstruction으로 주입한다.
+  private readonly presentationContext?: PresentationContext;
+
   constructor(
     sessionId: string,
     targetLanguage: string,
@@ -102,6 +106,7 @@ export class TranslationBridge {
       livekitUrl: string;
       livekitApiKey: string;
       livekitApiSecret: string;
+      presentationContext?: PresentationContext;
     },
     transcribeOnly: boolean = false
   ) {
@@ -116,6 +121,7 @@ export class TranslationBridge {
     this.livekitUrl = config.livekitUrl;
     this.livekitApiKey = config.livekitApiKey;
     this.livekitApiSecret = config.livekitApiSecret;
+    this.presentationContext = config.presentationContext;
   }
 
   async start(): Promise<void> {
@@ -445,11 +451,39 @@ export class TranslationBridge {
     }
   }
 
+  // presentationContext가 있으면 번역용 systemInstruction 텍스트를 만든다.
+  // title·presenter는 표시 전용이라 주입하지 않는다. 내용이 비면 undefined.
+  private buildSystemInstruction():
+    | { parts: { text: string }[] }
+    | undefined {
+    const ctx = this.presentationContext;
+    if (!ctx) return undefined;
+    // 클라이언트가 넘긴 컨텍스트는 형식이 어긋날 수 있으므로 방어적으로 읽는다.
+    const summary =
+      typeof ctx.domainSummary === "string" ? ctx.domainSummary.trim() : "";
+    const terms = (Array.isArray(ctx.glossary) ? ctx.glossary : []).filter(
+      (g) => g?.term?.trim() && g?.note?.trim()
+    );
+    if (!summary && terms.length === 0) return undefined;
+
+    const lines: string[] = ["You are translating a live lecture."];
+    if (summary) lines.push(`Domain: ${summary}`);
+    if (terms.length > 0) {
+      lines.push(
+        "Glossary (translate these terms consistently and accurately):"
+      );
+      for (const t of terms) lines.push(`- ${t.term}: ${t.note}`);
+    }
+    return { parts: [{ text: lines.join("\n") }] };
+  }
+
   private sendGeminiSetup(ws: WebSocket = this.geminiWs!): void {
+    const systemInstruction = this.buildSystemInstruction();
     const setupMessage = {
       setup: {
         model: `models/${this.geminiModel}`,
         outputAudioTranscription: {},
+        ...(systemInstruction ? { systemInstruction } : {}),
         // 컨텍스트 창 압축을 공격적으로(누적 0) 설정한다. 이게 없으면 모델이
         // 세션 내내 컨텍스트를 누적해 매 번역이 점점 느려지고 지연이 크게
         // 쌓인다(실측 ~15초). AI Studio 플레이그라운드의 저지연(2~3초) 참조
@@ -460,6 +494,13 @@ export class TranslationBridge {
         },
         generationConfig: {
           responseModalities: ["AUDIO"],
+          // 통역 음성을 한 목소리로 고정한다. 지정하지 않으면 모델이 발화마다
+          // 남/여 목소리를 오가며 바꿔 듣기 불편하다.
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: GEMINI_VOICE },
+            },
+          },
           translationConfig: {
             targetLanguageCode: this.targetLanguage,
             echoTargetLanguage: true,
