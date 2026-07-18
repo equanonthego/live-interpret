@@ -16,9 +16,9 @@ const EXTRACT_PROMPT = `You are analyzing a lecture's slide deck / handout to he
 Return JSON with these fields:
 - "title": the presentation title exactly as written, or "" if none is found.
 - "presenter": the speaker/author/presenter name exactly as written, or "" if none.
-- "domainSummary": 2-4 sentences summarizing the subject domain, for translation context.
-- "glossary": array of the key terms whose consistent translation matters. For each: "term" (the term in its original language) and "note" (its meaning and how it should be handled when translating, language-neutral — do NOT hardcode a specific target language).
-Only output the JSON object.`;
+- "domainSummary": 2-4 sentences summarizing the subject domain, WRITTEN IN KOREAN, for translation context and for showing to the Korean-speaking presenter.
+- "glossary": array of the key terms whose consistent translation matters. For each: "term" (the term in its original language) and "note" (its meaning and handling guidance, WRITTEN IN KOREAN — do NOT hardcode a specific target language).
+Keep "title" and "presenter" exactly as they appear (do not translate them). Only output the JSON object.`;
 
 // Gemini Flash(REST generateContent)로 발표자료를 분석해 PresentationContext 반환.
 // PDF는 inlineData로, HTML은 텍스트로 넘긴다(Gemini가 PDF·텍스트만 직접 읽음).
