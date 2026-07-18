@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import SessionQRCode from "@/components/SessionQRCode";
 
 interface Props {
@@ -19,6 +20,10 @@ export default function PresentationViewer({
   onClose,
 }: Props) {
   const isPdf = mime.includes("pdf");
+  // 포털로 document.body에 렌더해야 broadcast의 .container(max-width) +
+  // .enter(transform)에 갇히지 않고 진짜 전체화면이 된다.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [blobUrl, setBlobUrl] = useState<string>("");
   // pdfjs 문서 객체(동적 로드라 타입은 느슨하게).
@@ -67,9 +72,10 @@ export default function PresentationViewer({
       const p = await pdf.getPage(page);
       if (cancelled) return;
       const unscaled = p.getViewport({ scale: 1 });
+      // 뷰포트를 꽉 채우도록(가로/세로 중 맞는 쪽 기준, 비율 유지).
       const scale = Math.min(
-        (window.innerWidth * 0.96) / unscaled.width,
-        (window.innerHeight * 0.9) / unscaled.height
+        window.innerWidth / unscaled.width,
+        window.innerHeight / unscaled.height
       );
       const viewport = p.getViewport({ scale });
       const canvas = canvasRef.current!;
@@ -99,13 +105,15 @@ export default function PresentationViewer({
 
   const lastTwo = captions.slice(-2);
 
-  return (
+  if (!mounted) return null;
+
+  const overlay = (
     <div
       style={{
         position: "fixed",
         inset: 0,
         background: "#000",
-        zIndex: 1000,
+        zIndex: 2000,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -117,7 +125,7 @@ export default function PresentationViewer({
       ) : isPdf ? (
         <canvas
           ref={canvasRef}
-          style={{ maxWidth: "96vw", maxHeight: "90vh" }}
+          style={{ maxWidth: "100vw", maxHeight: "100vh" }}
         />
       ) : (
         blobUrl && (
@@ -134,26 +142,35 @@ export default function PresentationViewer({
         )
       )}
 
-      {/* 하단 자막 2줄 */}
+      {/* 하단 자막 2줄 — 중앙 ~50% 폭, 낮은 높이 */}
       {lastTwo.length > 0 && (
         <div
           style={{
             position: "absolute",
             left: 0,
             right: 0,
-            bottom: 0,
-            padding: "18px 24px",
-            background: "linear-gradient(transparent, rgba(0,0,0,0.75))",
-            color: "#fff",
-            fontSize: 26,
-            lineHeight: 1.35,
-            textAlign: "center",
-            textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+            bottom: 24,
+            display: "flex",
+            justifyContent: "center",
+            pointerEvents: "none",
           }}
         >
-          {lastTwo.map((c, i) => (
-            <div key={i}>{c}</div>
-          ))}
+          <div
+            style={{
+              maxWidth: "50vw",
+              background: "rgba(0,0,0,0.6)",
+              color: "#fff",
+              fontSize: 24,
+              lineHeight: 1.3,
+              padding: "10px 18px",
+              borderRadius: 10,
+              textAlign: "center",
+            }}
+          >
+            {lastTwo.map((c, i) => (
+              <div key={i}>{c}</div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -185,4 +202,6 @@ export default function PresentationViewer({
       </div>
     </div>
   );
+
+  return createPortal(overlay, document.body);
 }
