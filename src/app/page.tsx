@@ -101,6 +101,12 @@ export default function Home() {
     }
   };
 
+  // 지원 형식: PDF, HTML. (PPT·Keynote는 PDF로 내보내 올리도록 안내)
+  const isSupportedDoc = (f: File) =>
+    f.type === "application/pdf" ||
+    f.type === "text/html" ||
+    /\.(html?|pdf)$/i.test(f.name);
+
   const onPdfPicked = (file: File | null) => {
     setPdfFile(file);
     setAnalysis(null);
@@ -240,7 +246,7 @@ export default function Home() {
               setDragOver(false);
               if (loading || analyzing) return;
               const f = e.dataTransfer.files?.[0];
-              if (f && f.type === "application/pdf") onPdfPicked(f);
+              if (f && isSupportedDoc(f)) onPdfPicked(f);
             }}
             style={{
               border: `1.5px dashed ${dragOver ? "#7fb3ec" : "#c9def5"}`,
@@ -294,7 +300,7 @@ export default function Home() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/pdf"
+            accept="application/pdf,text/html,.pdf,.html,.htm"
             onChange={(e) => onPdfPicked(e.target.files?.[0] ?? null)}
             disabled={loading}
             style={{ display: "none" }}
@@ -305,6 +311,12 @@ export default function Home() {
             style={{ color: "var(--fg-secondary)", marginTop: -2 }}
           >
             통역이 더 정확해집니다
+          </p>
+          <p
+            className="mono"
+            style={{ color: "var(--fg-secondary)", fontSize: 11, marginTop: -8 }}
+          >
+            PDF · HTML (PPT·키노트는 PDF로 내보내 올려주세요)
           </p>
 
           {analysisError && (

@@ -20,15 +20,31 @@ Return JSON with these fields:
 - "glossary": array of the key terms whose consistent translation matters. For each: "term" (the term in its original language) and "note" (its meaning and how it should be handled when translating, language-neutral — do NOT hardcode a specific target language).
 Only output the JSON object.`;
 
-// Gemini Flash(REST generateContent)로 PDF를 분석해 PresentationContext 반환.
-// 어떤 이유로든(잘못된 PDF, API 오류, JSON 파싱 실패, 타임아웃) 실패하면 null.
+// Gemini Flash(REST generateContent)로 발표자료를 분석해 PresentationContext 반환.
+// PDF는 inlineData로, HTML은 텍스트로 넘긴다(Gemini가 PDF·텍스트만 직접 읽음).
+// 어떤 이유로든(잘못된 파일, API 오류, JSON 파싱 실패, 타임아웃) 실패하면 null.
 export async function extractPresentationContext(
-  pdfBytes: Uint8Array,
+  fileBytes: Uint8Array,
   mime: string,
   geminiApiKey: string
 ): Promise<PresentationContext | null> {
   try {
-    const base64 = Buffer.from(pdfBytes).toString("base64");
+    // HTML은 텍스트로 읽어 넘긴다(태그 포함, 과도한 길이는 컷). 그 외(PDF 등)는
+    // inlineData로 원본 바이트를 넘긴다.
+    const isHtml = mime.includes("html");
+    const filePart = isHtml
+      ? {
+          text: `Presentation source (HTML):\n${Buffer.from(fileBytes)
+            .toString("utf-8")
+            .slice(0, 200000)}`,
+        }
+      : {
+          inlineData: {
+            mimeType: mime || "application/pdf",
+            data: Buffer.from(fileBytes).toString("base64"),
+          },
+        };
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_EXTRACT_MODEL}:generateContent?key=${encodeURIComponent(
       geminiApiKey
     )}`;
@@ -36,10 +52,7 @@ export async function extractPresentationContext(
       contents: [
         {
           role: "user",
-          parts: [
-            { inlineData: { mimeType: mime, data: base64 } },
-            { text: EXTRACT_PROMPT },
-          ],
+          parts: [filePart, { text: EXTRACT_PROMPT }],
         },
       ],
       generationConfig: {
