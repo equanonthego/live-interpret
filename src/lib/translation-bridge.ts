@@ -69,7 +69,7 @@ export class TranslationBridge {
   private readonly geminiApiKey: string;
   private readonly geminiModel: string = GEMINI_LIVE_MODEL;
   private readonly sampleRate: number = 24000; // Gemini outputs 24kHz
-  private readonly inputSampleRate: number = 48000; // LiveKit default
+  private readonly inputSampleRate: number = 16000; // Gemini Live 네이티브 입력 rate (참조 플레이그라운드와 동일). 이전 48000은 지연 유발 의심.
   private readonly channels: number = 1;
 
   // LiveKit config
@@ -81,11 +81,13 @@ export class TranslationBridge {
   private sourceIdentity: string;
   private lastAudioFrameTime: number = 0;
   private captureChain: Promise<void> = Promise.resolve();
-  // 이미 Gemini로 파이핑을 시작한 트랙. TrackSubscribed 핸들러가 여러 곳에서
-  // 등록돼 같은 구독 이벤트에 대해 콜백이 두 번 이상 울릴 수 있는데, 그때
-  // 같은 오디오를 Gemini에 이중 전송하면 스트림이 겹쳐 깨져서 번역이 완전히
-  // 엉뚱하게 나온다. 트랙 객체 기준으로 한 번만 파이핑하도록 가드한다.
-  private readonly pipedTracks = new WeakSet<RemoteAudioTrack>();
+  // 브릿지당 Gemini로 향하는 오디오 리더는 항상 1개만 유지한다. 리더가 2개
+  // 이상 살아 있으면 같은 오디오가 겹침·실시간의 2배 속도로 공급돼 번역이
+  // 엉뚱해지고(오인식) Gemini 입력 큐가 쌓여 지연이 계속 커진다.
+  // activePipeSid로 같은 트랙 중복을 막고, pipeGeneration으로 새 트랙 교체 시
+  // 이전 리더 루프를 무효화한다.
+  private activePipeSid: string | null = null;
+  private pipeGeneration = 0;
 
   // When true, this bridge only transcribes the organizer's own speech (no
   // translated audio track is published). Used for the host's Korean captions.
@@ -448,6 +450,14 @@ export class TranslationBridge {
       setup: {
         model: `models/${this.geminiModel}`,
         outputAudioTranscription: {},
+        // 컨텍스트 창 압축을 공격적으로(누적 0) 설정한다. 이게 없으면 모델이
+        // 세션 내내 컨텍스트를 누적해 매 번역이 점점 느려지고 지연이 크게
+        // 쌓인다(실측 ~15초). AI Studio 플레이그라운드의 저지연(2~3초) 참조
+        // 설정과 동일하게 맞춘다: 각 발화를 사실상 독립적으로 즉시 번역.
+        contextWindowCompression: {
+          triggerTokens: 0,
+          slidingWindow: { targetTokens: 0 },
+        },
         generationConfig: {
           responseModalities: ["AUDIO"],
           translationConfig: {
@@ -635,22 +645,11 @@ export class TranslationBridge {
   private async subscribeToOrganizer(): Promise<void> {
     if (!this.room) return;
 
-    // Find the organizer participant and subscribe to their audio
-    const participants = this.room.remoteParticipants;
+    // 리스너는 여기서 정확히 한 번만 등록한다. 이전 구조는 발표자가 이미
+    // 방에 있으면 별도 메서드에서 TrackSubscribed 리스너를 또 등록해, 같은
+    // 구독 이벤트에 파이핑이 중복 실행될 수 있었다(→ 오디오 2배 공급).
 
-    for (const [, participant] of participants) {
-      if (participant.identity === this.sourceIdentity) {
-        this.subscribeToParticipantAudio(participant);
-        return;
-      }
-    }
-
-    // If the source speaker hasn't joined yet, wait for them
-    console.log(
-      `[TranslationBridge:${this.targetLanguage}] Waiting for source speaker ${this.sourceIdentity}...`
-    );
-
-    // Listen for the source speaker to publish their track
+    // 발표자가 (나중에) 오디오를 발행하면 구독
     this.room.on(
       RoomEvent.TrackPublished,
       (
@@ -666,7 +665,7 @@ export class TranslationBridge {
       }
     );
 
-    // Once subscribed, pipe to Gemini
+    // 구독되면 Gemini로 파이핑 (pipeTrackToGemini가 단일 리더를 보장)
     this.room.on(
       RoomEvent.TrackSubscribed,
       (
@@ -682,51 +681,40 @@ export class TranslationBridge {
         }
       }
     );
-  }
 
-  /**
-   * Manually subscribe to a participant's audio track (needed when autoSubscribe is off).
-   */
-  private subscribeToParticipantAudio(
-    participant: RemoteParticipant
-  ): void {
-    for (const [, publication] of participant.trackPublications) {
-      if (publication.kind === TrackKind.KIND_AUDIO) {
-        // Manually subscribe — this triggers TrackSubscribed event
-        publication.setSubscribed(true);
+    // 발표자가 이미 방에 있으면 기존 오디오 발행을 구독한다
+    // (autoSubscribe가 꺼져 있어 수동 구독 필요. TrackSubscribed 이벤트가
+    // 위 리스너를 통해 파이핑으로 이어진다.)
+    for (const [, participant] of this.room.remoteParticipants) {
+      if (participant.identity === this.sourceIdentity) {
+        for (const [, publication] of participant.trackPublications) {
+          if (publication.kind === TrackKind.KIND_AUDIO) {
+            publication.setSubscribed(true);
+          }
+        }
+        return;
       }
     }
 
-    // Also listen for TrackSubscribed to pipe to Gemini
-    this.room!.on(
-      RoomEvent.TrackSubscribed,
-      (
-        track: RemoteAudioTrack,
-        pub: RemoteTrackPublication,
-        p: RemoteParticipant
-      ) => {
-        if (
-          p.identity === this.sourceIdentity &&
-          pub.kind === TrackKind.KIND_AUDIO
-        ) {
-          this.pipeTrackToGemini(track);
-        }
-      }
+    console.log(
+      `[TranslationBridge:${this.targetLanguage}] Waiting for source speaker ${this.sourceIdentity}...`
     );
   }
 
   private pipeTrackToGemini(track: RemoteAudioTrack): void {
-    // 같은 트랙을 두 번 파이핑하지 않는다(이중 전송 시 오디오가 겹쳐 깨진다).
-    if (this.pipedTracks.has(track)) {
+    // 같은 트랙(SID)이 다시 오면 무시한다. 다른 트랙이 오면(재발행 등)
+    // 세대(generation)를 올려 이전 리더 루프를 무효화하고 교체한다.
+    if (track.sid && track.sid === this.activePipeSid) {
       console.log(
         `[TranslationBridge:${this.targetLanguage}] Track ${track.sid} already piped — skipping duplicate`
       );
       return;
     }
-    this.pipedTracks.add(track);
+    const gen = ++this.pipeGeneration;
+    this.activePipeSid = track.sid ?? null;
 
     console.log(
-      `[TranslationBridge:${this.targetLanguage}] Subscribed to organizer audio track, piping to Gemini`
+      `[TranslationBridge:${this.targetLanguage}] Subscribed to organizer audio track ${track.sid ?? "(no sid)"}, piping to Gemini (gen ${gen})`
     );
 
     const audioStream = new AudioStream(track, {
@@ -740,7 +728,8 @@ export class TranslationBridge {
     const readLoop = async () => {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        // 새 리더로 교체됐으면(세대 불일치) 이 루프는 조용히 종료한다.
+        if (done || gen !== this.pipeGeneration) break;
         this.sendAudioToGemini(value);
       }
     };

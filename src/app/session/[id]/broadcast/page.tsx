@@ -282,6 +282,17 @@ function BroadcastControls({
             name: "broadcast-audio",
             source: Track.Source.Microphone,
           });
+          // publish가 진행되는 사이 클린업이 먼저 실행됐을 수 있다(React
+          // StrictMode의 마운트→클린업→재마운트). 그 시점엔 localPub이 아직
+          // null이라 클린업이 unpublish를 못 하므로, 여기서 직접 회수한다.
+          // 안 하면 음소거된 유령 트랙이 남아 발표자 오디오 발행이 2개가
+          // 되고, 번역 브릿지가 유령 쪽(무음)을 구독하면 통역이 멈춘다.
+          if (!active) {
+            room.localParticipant.unpublishTrack(mixedTrack).catch((err) => {
+              console.error("Failed to unpublish stale mixed track:", err);
+            });
+            return;
+          }
           publishedTrackPubRef.current = pub;
           localPub = pub;
           await pub.mute();
