@@ -46,5 +46,6 @@ cleanup-rooms.js
 
 # local launcher runtime artifacts
 .server.log
+.livekit.log
 .tunnel.log
 .tunnel.pid

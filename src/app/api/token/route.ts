@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AccessToken } from "livekit-server-sdk";
 import TranslationSessionManager from "@/lib/translation-session-manager";
+import { getLanIPv4 } from "@/lib/lan-address";
 
 // GET /api/token — Generate a LiveKit access token
 export async function GET(req: NextRequest) {
@@ -86,7 +87,30 @@ export async function GET(req: NextRequest) {
   });
 
   const token = await at.toJwt();
-  const serverUrl = process.env.LIVEKIT_URL || "ws://localhost:7880";
+  const serverUrl = resolveClientLivekitUrl(
+    process.env.LIVEKIT_URL || "ws://localhost:7880"
+  );
 
   return NextResponse.json({ token, serverUrl });
+}
+
+// 클라이언트(발표자 브라우저 + 청자 폰)가 접속할 LiveKit URL을 결정한다.
+// LiveKit을 이 Mac에서 자체호스팅하면 LIVEKIT_URL이 localhost를 가리키는데,
+// 청자 폰에서 localhost는 자기 자신이라 접속이 안 된다. 그래서 호스트가
+// localhost/127.0.0.1이면 서버의 실제 LAN IP로 바꿔서 돌려준다. 브릿지는
+// 서버(같은 Mac)에서 도므로 LIVEKIT_URL(localhost)을 그대로 쓰고, 이 치환은
+// 클라이언트에 넘기는 값에만 적용한다. LiveKit Cloud(wss://…)면 그대로 둔다.
+function resolveClientLivekitUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const isLocal =
+      parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+    if (!isLocal) return url;
+    const lanIp = getLanIPv4();
+    if (!lanIp) return url;
+    parsed.hostname = lanIp;
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return url;
+  }
 }

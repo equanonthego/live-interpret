@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import os from "os";
+import { getLanIPv4 } from "@/lib/lan-address";
 
 // GET /api/lan-address — 이 서버가 붙어 있는 사설망(LAN) IP로 만든 origin을
 // 돌려준다. 발표자는 마이크(getUserMedia) 보안 컨텍스트 때문에 localhost로
@@ -11,25 +11,6 @@ import os from "os";
 // 포트/프로토콜은 요청의 Host 헤더에서 그대로 가져오고 호스트명만 LAN IP로
 // 바꾼다. LAN IP를 못 찾으면 null을 돌려주고, 클라이언트가
 // window.location.origin으로 폴백한다.
-function getLanIPv4(): string | null {
-  const ifaces = os.networkInterfaces();
-  // en0(주로 Wi-Fi/이더넷), en1을 우선 확인하고, 없으면 나머지 인터페이스에서
-  // 사설망 IPv4를 찾는다.
-  const preferredOrder = ["en0", "en1"];
-  const names = [
-    ...preferredOrder.filter((n) => ifaces[n]),
-    ...Object.keys(ifaces).filter((n) => !preferredOrder.includes(n)),
-  ];
-  for (const name of names) {
-    for (const info of ifaces[name] || []) {
-      if (info.family === "IPv4" && !info.internal) {
-        return info.address;
-      }
-    }
-  }
-  return null;
-}
-
 export async function GET(req: NextRequest) {
   const ip = getLanIPv4();
   if (!ip) {
