@@ -98,6 +98,17 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
     setPlaybackEnabled(true);
   };
 
+  // 방송에서 나가기: LiveKit 방을 끊고 홈으로. disconnectOnPageLeave=false라
+  // 명시적으로 disconnect 해줘야 서버 쪽 참가자/자원이 정리된다.
+  const handleLeave = async () => {
+    try {
+      await room.disconnect();
+    } catch {
+      // 이미 끊긴 상태여도 무시하고 이동한다.
+    }
+    window.location.href = "/";
+  };
+
   const [allowedLanguages, setAllowedLanguages] = useState<string[] | undefined>(undefined);
   const [sessionTitle, setSessionTitle] = useState("");
   const [sessionPresenter, setSessionPresenter] = useState("");
@@ -650,13 +661,31 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
           pointerEvents: "none",
         }}
       >
-        <button
-          onClick={togglePlayback}
-          className={playbackEnabled ? "btn btn-outline" : "btn btn-dark"}
-          style={{ width: "100%", maxWidth: 480, pointerEvents: "auto" }}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            width: "100%",
+            maxWidth: 480,
+            pointerEvents: "auto",
+          }}
         >
-          {playbackEnabled ? "⏸ 소리 끄기" : "🔊 소리 켜기"}
-        </button>
+          <button
+            onClick={togglePlayback}
+            className={playbackEnabled ? "btn btn-outline" : "btn btn-dark"}
+            style={{ flex: 1 }}
+          >
+            {playbackEnabled ? "⏸ 소리 끄기" : "🔊 소리 켜기"}
+          </button>
+          <button
+            onClick={handleLeave}
+            className="btn btn-outline"
+            style={{ flexShrink: 0 }}
+            aria-label="방송 나가기"
+          >
+            🚪 나가기
+          </button>
+        </div>
       </div>
     </div>
   );
