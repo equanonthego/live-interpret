@@ -139,10 +139,31 @@ function BroadcastControls({
 
 
 
-  const joinUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/session/${sessionId}/watch`
-      : "";
+  // 청자용 QR/링크의 origin. 발표자가 localhost로 열면 window.location.origin이
+  // localhost라 QR에 그대로 박혀 청자 폰이 접속하지 못한다. 이 경우에만 서버의
+  // 실제 LAN 주소를 받아와 대체한다. 터널/공개 도메인으로 연 경우엔
+  // window.location.origin이 이미 올바르므로 그대로 쓴다.
+  // localhost로 열었을 때만 서버의 LAN 주소를 비동기로 받아와 QR에 쓴다.
+  // 그 외(터널/공개 도메인)에서는 window.location.origin이 이미 올바르다.
+  const [lanOrigin, setLanOrigin] = useState<string | null>(null);
+  useEffect(() => {
+    const host = window.location.hostname;
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+    if (!isLocal) return;
+    fetch("/api/lan-address")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.origin) setLanOrigin(d.origin);
+      })
+      .catch(() => {});
+  }, []);
+
+  const joinOrigin =
+    lanOrigin ??
+    (typeof window !== "undefined" ? window.location.origin : "");
+  const joinUrl = joinOrigin
+    ? `${joinOrigin}/session/${sessionId}/watch`
+    : "";
 
   const fetchTranslations = useCallback(async () => {
     try {
