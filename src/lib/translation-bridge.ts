@@ -81,6 +81,11 @@ export class TranslationBridge {
   private sourceIdentity: string;
   private lastAudioFrameTime: number = 0;
   private captureChain: Promise<void> = Promise.resolve();
+  // 이미 Gemini로 파이핑을 시작한 트랙. TrackSubscribed 핸들러가 여러 곳에서
+  // 등록돼 같은 구독 이벤트에 대해 콜백이 두 번 이상 울릴 수 있는데, 그때
+  // 같은 오디오를 Gemini에 이중 전송하면 스트림이 겹쳐 깨져서 번역이 완전히
+  // 엉뚱하게 나온다. 트랙 객체 기준으로 한 번만 파이핑하도록 가드한다.
+  private readonly pipedTracks = new WeakSet<RemoteAudioTrack>();
 
   // When true, this bridge only transcribes the organizer's own speech (no
   // translated audio track is published). Used for the host's Korean captions.
@@ -443,11 +448,6 @@ export class TranslationBridge {
       setup: {
         model: `models/${this.geminiModel}`,
         outputAudioTranscription: {},
-        // 호스트 자막(transcribeOnly) 브릿지는 번역 결과가 아니라 발화자가
-        // 실제로 말한 원문(raw STT)을 자막으로 써야 하므로 입력 오디오
-        // transcription을 켠다. handleGeminiMessage에서 inputTranscription을
-        // 읽는다. (출력 transcription은 ko→ko 재번역이라 원문이 뭉개진다.)
-        ...(this.transcribeOnly ? { inputAudioTranscription: {} } : {}),
         generationConfig: {
           responseModalities: ["AUDIO"],
           translationConfig: {
@@ -539,16 +539,13 @@ export class TranslationBridge {
         }
       }
 
-      // 자막 텍스트의 출처를 고른다. 호스트 자막(transcribeOnly) 브릿지는
-      // 입력 transcription(발화자가 실제로 말한 원문 STT)을, 일반 번역
-      // 브릿지는 출력 transcription(번역 결과)을 쓴다.
-      const transcription = this.transcribeOnly
-        ? serverContent?.inputTranscription
-        : serverContent?.outputTranscription;
-
-      // Handle transcription (separate field from modelTurn)
-      if (transcription?.text) {
-        const text = transcription.text;
+      // 모든 브릿지는 출력 transcription(번역 결과)을 자막으로 쓴다. 호스트
+      // 자막 브릿지는 target=ko라, 어떤 언어가 들어오든 한국어로 번역된 결과가
+      // 나온다: 발표자의 한국어는 echoTargetLanguage로 그대로 반영되고,
+      // 학생이 다른 언어로 질문하면 한국어로 번역돼 강연자가 이해할 수 있다.
+      // (소스 언어는 고정하지 않고 자동 감지 — 청자는 원 언어대로 골라 듣는다.)
+      if (serverContent?.outputTranscription?.text) {
+        const text = serverContent.outputTranscription.text;
         const isInterim = !serverContent.turnComplete;
 
         if (isInterim) {
@@ -719,6 +716,15 @@ export class TranslationBridge {
   }
 
   private pipeTrackToGemini(track: RemoteAudioTrack): void {
+    // 같은 트랙을 두 번 파이핑하지 않는다(이중 전송 시 오디오가 겹쳐 깨진다).
+    if (this.pipedTracks.has(track)) {
+      console.log(
+        `[TranslationBridge:${this.targetLanguage}] Track ${track.sid} already piped — skipping duplicate`
+      );
+      return;
+    }
+    this.pipedTracks.add(track);
+
     console.log(
       `[TranslationBridge:${this.targetLanguage}] Subscribed to organizer audio track, piping to Gemini`
     );
