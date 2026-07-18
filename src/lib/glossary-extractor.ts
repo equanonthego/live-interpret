@@ -129,7 +129,10 @@ export async function extractPresentationContext(
       glossary,
     };
   } catch (err) {
-    console.error("[glossary-extractor] extraction failed:", err);
+    // 에러 메시지에 요청 URL(키 포함)이 섞일 수 있으므로 키를 마스킹해 로깅한다.
+    const raw = err instanceof Error ? err.message : String(err);
+    const safe = geminiApiKey ? raw.split(geminiApiKey).join("***") : raw;
+    console.error("[glossary-extractor] extraction failed:", safe);
     return null;
   }
 }

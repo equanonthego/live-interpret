@@ -458,9 +458,11 @@ export class TranslationBridge {
     | undefined {
     const ctx = this.presentationContext;
     if (!ctx) return undefined;
-    const summary = ctx.domainSummary?.trim();
-    const terms = (ctx.glossary || []).filter(
-      (g) => g.term?.trim() && g.note?.trim()
+    // 클라이언트가 넘긴 컨텍스트는 형식이 어긋날 수 있으므로 방어적으로 읽는다.
+    const summary =
+      typeof ctx.domainSummary === "string" ? ctx.domainSummary.trim() : "";
+    const terms = (Array.isArray(ctx.glossary) ? ctx.glossary : []).filter(
+      (g) => g?.term?.trim() && g?.note?.trim()
     );
     if (!summary && terms.length === 0) return undefined;
 

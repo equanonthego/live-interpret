@@ -28,10 +28,19 @@ export default function PresentationViewer({
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string>("");
 
+  // onClose는 부모가 매 렌더(자막 갱신)마다 새로 만드므로 ref로 안정화한다.
+  // 그래야 keydown 리스너가 자막 갱신마다 재등록되며 키 입력을 흘리지 않는다.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   // 파일 로드
   useEffect(() => {
     let revoked = "";
     let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let createdDoc: any = null;
     (async () => {
       try {
         const res = await fetch(`/api/sessions/${sessionId}/presentation`);
@@ -42,6 +51,7 @@ export default function PresentationViewer({
           pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
           const doc = await pdfjs.getDocument({ data: new Uint8Array(buf) })
             .promise;
+          createdDoc = doc;
           if (!cancelled) setPdf(doc);
         } else {
           const url = URL.createObjectURL(
@@ -57,6 +67,8 @@ export default function PresentationViewer({
     return () => {
       cancelled = true;
       if (revoked) URL.revokeObjectURL(revoked);
+      // pdfjs 문서 워커/버퍼 해제 (반복 열기 시 누수 방지).
+      if (createdDoc) createdDoc.destroy();
     };
   }, [sessionId, isPdf, mime]);
 
@@ -64,6 +76,8 @@ export default function PresentationViewer({
   useEffect(() => {
     if (!pdf || !canvasRef.current) return;
     let cancelled = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let task: any = null;
     (async () => {
       const p = await pdf.getPage(page);
       if (cancelled) return;
@@ -78,10 +92,17 @@ export default function PresentationViewer({
       const ctx = canvas.getContext("2d")!;
       canvas.width = viewport.width;
       canvas.height = viewport.height;
-      await p.render({ canvasContext: ctx, viewport }).promise;
+      task = p.render({ canvasContext: ctx, viewport });
+      try {
+        await task.promise;
+      } catch {
+        // 페이지 전환으로 렌더가 취소되면 무시.
+      }
     })();
     return () => {
       cancelled = true;
+      // 같은 캔버스에 중복 render()가 겹치지 않도록 이전 렌더를 취소한다.
+      if (task) task.cancel();
     };
   }, [pdf, page]);
 
@@ -89,7 +110,7 @@ export default function PresentationViewer({
   useEffect(() => {
     const numPages: number = pdf?.numPages ?? 1;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
       else if (isPdf && e.key === "ArrowRight")
         setPage((n) => Math.min(numPages, n + 1));
       else if (isPdf && e.key === "ArrowLeft")
@@ -97,7 +118,7 @@ export default function PresentationViewer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isPdf, pdf, onClose]);
+  }, [isPdf, pdf]);
 
   const lastTwo = captions.slice(-2);
 

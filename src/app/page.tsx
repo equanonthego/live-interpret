@@ -108,9 +108,15 @@ export default function Home() {
     /\.(html?|pdf)$/i.test(f.name);
 
   const onPdfPicked = (file: File | null) => {
-    setPdfFile(file);
     setAnalysis(null);
     setAnalysisError(null);
+    // 드롭·선택 양쪽에서 동일하게 형식을 검증하고, 미지원이면 안내한다.
+    if (file && !isSupportedDoc(file)) {
+      setPdfFile(null);
+      setAnalysisError("지원하지 않는 형식입니다. PDF 또는 HTML만 올릴 수 있어요.");
+      return;
+    }
+    setPdfFile(file);
     if (file) analyzePdf(file);
   };
 
@@ -247,8 +253,7 @@ export default function Home() {
               e.preventDefault();
               setDragOver(false);
               if (loading || analyzing) return;
-              const f = e.dataTransfer.files?.[0];
-              if (f && isSupportedDoc(f)) onPdfPicked(f);
+              onPdfPicked(e.dataTransfer.files?.[0] ?? null);
             }}
             style={{
               border: `1.5px dashed ${dragOver ? "#7fb3ec" : "#c9def5"}`,

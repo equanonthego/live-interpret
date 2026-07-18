@@ -21,6 +21,7 @@ import {
   extractPresentationContext,
   type PresentationContext,
 } from "@/lib/glossary-extractor";
+import { MAX_PRESENTATION_BYTES } from "@/lib/interpret-config";
 
 // POST /api/sessions — Create a new broadcast session
 export async function POST(req: NextRequest) {
@@ -61,7 +62,13 @@ export async function POST(req: NextRequest) {
         }
       }
       const file = form.get("presentation");
-      if (file && file instanceof File && file.size > 0) {
+      // 너무 큰 파일은 무시한다(발표자료는 선택이므로 세션 생성은 계속).
+      if (
+        file &&
+        file instanceof File &&
+        file.size > 0 &&
+        file.size <= MAX_PRESENTATION_BYTES
+      ) {
         pdfBytes = new Uint8Array(await file.arrayBuffer());
         pdfMime = file.type || "application/pdf";
         pdfName = file.name || "presentation";

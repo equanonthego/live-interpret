@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractPresentationContext } from "@/lib/glossary-extractor";
+import { MAX_PRESENTATION_BYTES } from "@/lib/interpret-config";
 
 // POST /api/extract — 발표자료(PDF)를 분석해 제목·발표자·요약·용어집을 반환.
 // 홈 화면에서 파일 업로드 시 호출한다(세션 생성 전에 결과를 보여주기 위함).
@@ -23,6 +24,12 @@ export async function POST(req: NextRequest) {
     const file = form.get("presentation");
     if (!(file instanceof File) || file.size === 0) {
       return NextResponse.json({ error: "Missing presentation file" }, { status: 400 });
+    }
+    if (file.size > MAX_PRESENTATION_BYTES) {
+      return NextResponse.json(
+        { error: "파일이 너무 큽니다 (최대 20MB)." },
+        { status: 413 }
+      );
     }
 
     const pdfBytes = new Uint8Array(await file.arrayBuffer());
