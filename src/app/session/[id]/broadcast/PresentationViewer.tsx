@@ -69,7 +69,12 @@ export default function PresentationViewer({
       cancelled = true;
       if (revoked) URL.revokeObjectURL(revoked);
       // pdfjs 문서 워커/버퍼 해제 (반복 열기 시 누수 방지).
-      if (createdDoc) createdDoc.destroy();
+      // destroy가 진행 중 렌더와 겹쳐 던질 수 있으므로 방어한다.
+      try {
+        createdDoc?.destroy();
+      } catch {
+        /* 이미 해제됐거나 렌더와 경합 — 무시 */
+      }
     };
   }, [sessionId, isPdf, mime]);
 
@@ -80,30 +85,36 @@ export default function PresentationViewer({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let task: any = null;
     (async () => {
-      const p = await pdf.getPage(page);
-      if (cancelled) return;
-      const unscaled = p.getViewport({ scale: 1 });
-      // 뷰포트를 꽉 채우도록(가로/세로 중 맞는 쪽 기준, 비율 유지).
-      const scale = Math.min(
-        window.innerWidth / unscaled.width,
-        window.innerHeight / unscaled.height
-      );
-      const viewport = p.getViewport({ scale });
-      const canvas = canvasRef.current!;
-      const ctx = canvas.getContext("2d")!;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      task = p.render({ canvasContext: ctx, viewport });
       try {
+        const p = await pdf.getPage(page);
+        if (cancelled || !canvasRef.current) return;
+        const unscaled = p.getViewport({ scale: 1 });
+        // 뷰포트를 꽉 채우도록(가로/세로 중 맞는 쪽 기준, 비율 유지).
+        const scale = Math.min(
+          window.innerWidth / unscaled.width,
+          window.innerHeight / unscaled.height
+        );
+        const viewport = p.getViewport({ scale });
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d")!;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        task = p.render({ canvasContext: ctx, viewport });
         await task.promise;
       } catch {
-        // 페이지 전환으로 렌더가 취소되면 무시.
+        // 페이지 전환·닫기로 렌더가 취소되거나(RenderingCancelledException),
+        // 문서가 destroy된 뒤 getPage가 reject되는 경우 등 — 모두 무시.
+        // (여기서 잡지 않으면 unhandled rejection으로 에러가 표출된다.)
       }
     })();
     return () => {
       cancelled = true;
       // 같은 캔버스에 중복 render()가 겹치지 않도록 이전 렌더를 취소한다.
-      if (task) task.cancel();
+      try {
+        task?.cancel();
+      } catch {
+        /* 이미 끝났거나 취소된 렌더 — 무시 */
+      }
     };
   }, [pdf, page]);
 
@@ -121,7 +132,9 @@ export default function PresentationViewer({
     return () => window.removeEventListener("keydown", onKey);
   }, [isPdf, pdf]);
 
-  const lastTwo = captions.slice(-2);
+  // 최근 자막 몇 개를 한 덩어리로 합쳐 화면 하단에 표시하되,
+  // 실제 노출은 CSS line-clamp로 최대 3줄까지만 자른다.
+  const captionText = captions.slice(-3).join(" ").trim();
 
   // 포털로 document.body에 렌더해야 broadcast의 .container(max-width) +
   // .enter(transform 잔존)에 갇히지 않고 진짜 전체화면이 된다.
@@ -176,8 +189,8 @@ export default function PresentationViewer({
         )
       )}
 
-      {/* 하단 자막 2줄 — 중앙 ~50% 폭, 낮은 높이 */}
-      {lastTwo.length > 0 && (
+      {/* 하단 자막 — 중앙 ~50% 폭, 최대 3줄 */}
+      {captionText.length > 0 && (
         <div
           style={{
             position: "absolute",
@@ -199,11 +212,13 @@ export default function PresentationViewer({
               padding: "10px 18px",
               borderRadius: 10,
               textAlign: "center",
+              display: "-webkit-box",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: 3,
+              overflow: "hidden",
             }}
           >
-            {lastTwo.map((c, i) => (
-              <div key={i}>{c}</div>
-            ))}
+            {captionText}
           </div>
         </div>
       )}
@@ -246,17 +261,54 @@ export default function PresentationViewer({
         ✕ 닫기
       </button>
 
+      {/* 좌상단 뒤로가기 — ESC와 동일하게 컨트롤 화면으로 복귀. 항상 노출되어
+          키보드가 없거나 ESC가 안 먹는 상황에서도 확실히 빠져나갈 수 있다. */}
+      <button
+        onClick={() => onCloseRef.current()}
+        aria-label="뒤로"
+        style={{
+          position: "absolute",
+          top: 16,
+          left: 20,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          background: "rgba(0,0,0,0.55)",
+          color: "#fff",
+          border: "1px solid rgba(255,255,255,0.35)",
+          borderRadius: 8,
+          padding: "8px 16px",
+          fontSize: 16,
+          cursor: "pointer",
+        }}
+      >
+        <svg
+          width="26"
+          height="14"
+          viewBox="0 0 26 14"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M25 7H1M1 7l6-6M1 7l6 6" />
+        </svg>
+        뒤로
+      </button>
+
       {/* 키보드 안내 (PDF일 때만 페이지 이동 안내 포함) */}
       <div
         style={{
           position: "absolute",
-          top: 20,
-          left: 20,
+          top: 60,
+          left: 22,
           color: "rgba(255,255,255,0.6)",
           fontSize: 12,
         }}
       >
-        {isPdf ? "ESC 나가기 · ←/→ 페이지" : "ESC 또는 ✕ 로 나가기"}
+        {isPdf ? "ESC 나가기 · ←/→ 페이지" : "ESC 또는 뒤로 로 나가기"}
       </div>
     </div>
   );
