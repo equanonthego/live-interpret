@@ -252,6 +252,9 @@ function BroadcastControls({
             };
             return updated;
           }
+          // 세그먼트 마감 통지는 빈 텍스트 + final=true로 온다. 앞부분을 받지
+          // 못한 상태에서 이것만 도착하면 빈 자막 줄이 생기므로 무시한다.
+          if (!data.text) return prev;
           return [
             ...prev,
             { id: data.segmentId, text: data.text, final: data.final },

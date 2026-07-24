@@ -43,6 +43,7 @@ import WebSocket from "ws";
 import { GEMINI_LIVE_MODEL, GEMINI_VOICE } from "./interpret-config";
 import type { PresentationContext } from "./glossary-extractor";
 import { AudioInputPacer, virtualMicrophoneConfig } from "./audio-input-pacer";
+import { CaptionSegmenter } from "./caption-segmenter";
 
 export type BridgeStatus = "starting" | "active" | "error" | "closed";
 
@@ -52,13 +53,13 @@ export class TranslationBridge {
   private audioSource: AudioSource | null = null;
   private localTrack: LocalAudioTrack | null = null;
   private publishedTrackSid: string = "";
-  private transcriptionSegmentId: number = 0;
   private framesSentToGemini: number = 0;
   private framesReceivedFromGemini: number = 0;
   private resumptionHandle: string | null = null;
   private isReconnecting: boolean = false;
-  private pendingInterimText: string = "";
-  private interimTimeout: NodeJS.Timeout | null = null;
+  // 자막을 문장 단위 세그먼트로 끊어 발행한다. 번역 전용 모델이 turnComplete를
+  // 보내지 않아 무음 기반으로 세그먼트를 마감해야 한다(caption-segmenter 참고).
+  private readonly segmenter: CaptionSegmenter;
 
   public readonly targetLanguage: string;
   public readonly sessionId: string;
@@ -126,6 +127,20 @@ export class TranslationBridge {
     this.livekitApiKey = config.livekitApiKey;
     this.livekitApiSecret = config.livekitApiSecret;
     this.presentationContext = config.presentationContext;
+    this.segmenter = new CaptionSegmenter({
+      publish: (text, interim, segmentId) => {
+        // 세그먼트가 실제로 넘어가는지 로그로 확인할 수 있어야 한다. 자막이
+        // 멈추는 장애를 이 로그(및 그 부재)로 진단한다.
+        if (!interim) {
+          console.log(
+            `[TranslationBridge:${this.targetLanguage}] Final Transcription (segment ${segmentId}):`,
+            text.slice(0, 100)
+          );
+        }
+        this.publishTranscriptionText(text, interim, segmentId);
+      },
+      canPublish: () => this.status === "active",
+    });
   }
 
   async start(): Promise<void> {
@@ -163,11 +178,7 @@ export class TranslationBridge {
     );
     this.status = "closed";
 
-    if (this.interimTimeout) {
-      clearTimeout(this.interimTimeout);
-      this.interimTimeout = null;
-    }
-    this.pendingInterimText = "";
+    this.segmenter.reset();
 
     if (this.geminiWs) {
       this.geminiWs.close();
@@ -535,6 +546,11 @@ export class TranslationBridge {
   }
 
   private handleGeminiMessage(data: WebSocket.Data): void {
+    // 이미 종료된 브릿지에 뒤늦게 도착하는 메시지가 실제로 있다(서버 로그에서
+    // "Stopping bridge" 이후 도착 확인). 그대로 처리하면 stop()에서 정리한
+    // 세그먼트 타이머가 다시 걸리므로 여기서 끊는다.
+    if (this.status === "closed") return;
+
     try {
       const message = JSON.parse(data.toString());
 
@@ -605,37 +621,16 @@ export class TranslationBridge {
       // 학생이 다른 언어로 질문하면 한국어로 번역돼 강연자가 이해할 수 있다.
       // (소스 언어는 고정하지 않고 자동 감지 — 청자는 원 언어대로 골라 듣는다.)
       if (serverContent?.outputTranscription?.text) {
-        const text = serverContent.outputTranscription.text;
-        const isInterim = !serverContent.turnComplete;
-
-        if (isInterim) {
-          this.handleInterimTranscription(text);
-        } else {
-          if (this.interimTimeout) {
-            clearTimeout(this.interimTimeout);
-            this.interimTimeout = null;
-          }
-          const finalText = this.pendingInterimText + text;
-          this.pendingInterimText = "";
-          console.log(
-            `[TranslationBridge:${this.targetLanguage}] Final Transcription:`,
-            finalText.slice(0, 100)
-          );
-          this.publishTranscriptionText(finalText, false);
-        }
+        // turnComplete가 같이 왔다면 바로 아래 블록의 close()가 이 조각까지
+        // 묶어 final로 내보낸다.
+        this.segmenter.push(serverContent.outputTranscription.text);
       }
 
-      // If turn is complete, flush remaining interim buffer and advance the segment id
+      // turnComplete를 보내는 모델에서는 턴 경계가 곧 세그먼트 경계다.
+      // 번역 전용 모델(gemini-3.5-live-translate-preview)은 이 메시지를 보내지
+      // 않으므로, 세그먼터의 무음 타이머가 대신 문장을 끊는다.
       if (serverContent?.turnComplete) {
-        if (this.interimTimeout) {
-          clearTimeout(this.interimTimeout);
-          this.interimTimeout = null;
-        }
-        if (this.pendingInterimText) {
-          this.publishTranscriptionText(this.pendingInterimText, false);
-          this.pendingInterimText = "";
-        }
-        this.transcriptionSegmentId++;
+        this.segmenter.close();
       }
     } catch (error) {
       console.error(
@@ -847,25 +842,11 @@ export class TranslationBridge {
     }
   }
 
-  private handleInterimTranscription(text: string): void {
-    this.pendingInterimText += text;
-
-    if (!this.interimTimeout) {
-      this.interimTimeout = setTimeout(() => {
-        this.flushInterimTranscription();
-      }, 150); // Throttle interim text updates to 150ms
-    }
-  }
-
-  private flushInterimTranscription(): void {
-    this.interimTimeout = null;
-    if (this.pendingInterimText && this.status === "active") {
-      this.publishTranscriptionText(this.pendingInterimText, true);
-      this.pendingInterimText = "";
-    }
-  }
-
-  private async publishTranscriptionText(text: string, interim: boolean): Promise<void> {
+  private async publishTranscriptionText(
+    text: string,
+    interim: boolean,
+    segmentId: number
+  ): Promise<void> {
     if (!this.room || !this.room.localParticipant) return;
 
     try {
@@ -882,7 +863,7 @@ export class TranslationBridge {
       const payload = JSON.stringify({
         type: "transcription",
         language: this.targetLanguage,
-        segmentId: `${this.targetLanguage}-${this.transcriptionSegmentId}`,
+        segmentId: `${this.targetLanguage}-${segmentId}`,
         text,
         final: !interim,
         timestamp: Date.now(),
