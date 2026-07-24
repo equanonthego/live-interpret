@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import SessionQRCode from "@/components/SessionQRCode";
 
+// 발표 화면 하단 자막의 글자 크기·줄간격·최대 줄수.
+const CAPTION_FONT_SIZE = 24;
+const CAPTION_LINE_HEIGHT = 1.3;
+const CAPTION_MAX_LINES = 3;
+
 interface Props {
   sessionId: string;
   mime: string;
@@ -50,8 +55,18 @@ export default function PresentationViewer({
         if (isPdf) {
           const pdfjs = await import("pdfjs-dist");
           pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-          const doc = await pdfjs.getDocument({ data: new Uint8Array(buf) })
-            .promise;
+          const doc = await pdfjs.getDocument({
+            data: new Uint8Array(buf),
+            // 한글·CJK 발표자료는 CID 폰트(예: /Ordering (Korea1))를 쓴다.
+            // cMapUrl이 없으면 pdf.js가 CID→글리프 매핑을 만들지 못해
+            // translateFont가 실패하고 본문이 통째로 깨져 보인다.
+            // 아래 자산은 pdfjs-dist에서 복사한 것이라 버전이 어긋나면 안 된다.
+            // pdfjs-dist를 올린 뒤에는 반드시 `npm run sync:pdfjs`를 실행할 것.
+            cMapUrl: "/pdf/cmaps/",
+            cMapPacked: true,
+            // 폰트가 임베드되지 않은 PDF의 표준 14종 대체 폰트.
+            standardFontDataUrl: "/pdf/standard_fonts/",
+          }).promise;
           createdDoc = doc;
           if (!cancelled) setPdf(doc);
         } else {
@@ -133,8 +148,16 @@ export default function PresentationViewer({
   }, [isPdf, pdf]);
 
   // 최근 자막 몇 개를 한 덩어리로 합쳐 화면 하단에 표시하되,
-  // 실제 노출은 CSS line-clamp로 최대 3줄까지만 자른다.
+  // 실제 노출은 최대 3줄까지만 하고 항상 "가장 최근" 3줄을 보여준다.
   const captionText = captions.slice(-3).join(" ").trim();
+
+  // line-clamp는 뒤쪽을 잘라내므로(=맨 앞 3줄만 남음) 말이 길어질수록 새 자막이
+  // 가려진다. 3줄 높이로 자르되 스크롤을 항상 끝으로 붙여 최신 줄을 노출한다.
+  const captionBoxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = captionBoxRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [captionText]);
 
   // 포털로 document.body에 렌더해야 broadcast의 .container(max-width) +
   // .enter(transform 잔존)에 갇히지 않고 진짜 전체화면이 된다.
@@ -207,18 +230,25 @@ export default function PresentationViewer({
               maxWidth: "50vw",
               background: "rgba(0,0,0,0.6)",
               color: "#fff",
-              fontSize: 24,
-              lineHeight: 1.3,
               padding: "10px 18px",
               borderRadius: 10,
               textAlign: "center",
-              display: "-webkit-box",
-              WebkitBoxOrient: "vertical",
-              WebkitLineClamp: 3,
-              overflow: "hidden",
             }}
           >
-            {captionText}
+            <div
+              ref={captionBoxRef}
+              style={{
+                fontSize: CAPTION_FONT_SIZE,
+                lineHeight: CAPTION_LINE_HEIGHT,
+                // 정확히 3줄 높이. 넘치는 부분은 감추고 스크롤을 끝에 붙여
+                // 항상 마지막 3줄이 보이게 한다.
+                maxHeight:
+                  CAPTION_FONT_SIZE * CAPTION_LINE_HEIGHT * CAPTION_MAX_LINES,
+                overflow: "hidden",
+              }}
+            >
+              {captionText}
+            </div>
           </div>
         </div>
       )}

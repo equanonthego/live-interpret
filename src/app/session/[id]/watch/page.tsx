@@ -242,6 +242,10 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
             return updated;
           }
 
+          // 세그먼트 마감 통지는 빈 텍스트 + final=true로 온다. 방송 도중
+          // 접속했거나 언어를 막 바꿔 앞부분을 받지 못한 경우 이것만 도착하는데,
+          // 그대로 넣으면 빈 자막 줄이 생기므로 무시한다.
+          if (!data.text) return prev;
           const next = [...prev, entry];
           return next.slice(-50);
         });
