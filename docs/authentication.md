@@ -40,7 +40,7 @@ This happens because Google cannot auto-generate a managed OAuth client ID witho
 ```bash
 gcloud run deploy live-translate \
   --source . \
-  --region us-central1 \
+  --region asia-northeast3 \
   --no-allow-unauthenticated \
   --iap \
   --min-instances 0 \
@@ -58,7 +58,7 @@ LIVEKIT_URL=$LIVEKIT_URL"
 To enable IAP on an existing deployment:
 
 ```bash
-gcloud run services update live-translate --region us-central1 --iap
+gcloud run services update live-translate --region asia-northeast3 --iap
 ```
 
 ### 2. Grant access to specific users
@@ -71,7 +71,7 @@ When IAP is enabled, users must have the **IAP-secured Web App User** role (`rol
 gcloud iap web add-iam-policy-binding \
   --member="user:alice@gmail.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --region=us-central1 \
+  --region=asia-northeast3 \
   --resource-type=cloud-run \
   --service=live-translate
 ```
@@ -82,7 +82,7 @@ gcloud iap web add-iam-policy-binding \
 gcloud iap web add-iam-policy-binding \
   --member="domain:your-company.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --region=us-central1 \
+  --region=asia-northeast3 \
   --resource-type=cloud-run \
   --service=live-translate
 ```
@@ -93,7 +93,7 @@ gcloud iap web add-iam-policy-binding \
 gcloud iap web add-iam-policy-binding \
   --member="group:team@your-company.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --region=us-central1 \
+  --region=asia-northeast3 \
   --resource-type=cloud-run \
   --service=live-translate
 ```
@@ -104,7 +104,7 @@ To see who has access to the IAP policy for your service:
 
 ```bash
 gcloud iap web get-iam-policy \
-  --region=us-central1 \
+  --region=asia-northeast3 \
   --resource-type=cloud-run \
   --service=live-translate
 ```
@@ -119,7 +119,7 @@ gcloud iap web get-iam-policy \
 gcloud iap web add-iam-policy-binding \
   --member="user:newuser@gmail.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --region=us-central1 \
+  --region=asia-northeast3 \
   --resource-type=cloud-run \
   --service=live-translate
 ```
@@ -130,7 +130,7 @@ gcloud iap web add-iam-policy-binding \
 gcloud iap web remove-iam-policy-binding \
   --member="user:olduser@gmail.com" \
   --role="roles/iap.httpsResourceAccessor" \
-  --region=us-central1 \
+  --region=asia-northeast3 \
   --resource-type=cloud-run \
   --service=live-translate
 ```
@@ -139,13 +139,13 @@ gcloud iap web remove-iam-policy-binding \
 
 1. Turn off IAP on the Cloud Run service:
    ```bash
-   gcloud run services update live-translate --region us-central1 --no-iap
+   gcloud run services update live-translate --region asia-northeast3 --no-iap
    ```
 
 2. Re-enable public access on the Cloud Run IAM policy:
    ```bash
    gcloud run services add-iam-policy-binding live-translate \
-     --region us-central1 \
+     --region asia-northeast3 \
      --member="allUsers" \
      --role="roles/run.invoker"
    ```

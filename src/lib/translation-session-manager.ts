@@ -26,6 +26,12 @@
 import { TranslationBridge, BridgeStatus } from "./translation-bridge";
 import { SOURCE_LANGUAGE } from "./interpret-config";
 import type { PresentationContext } from "./glossary-extractor";
+import { evaluateReap } from "./session-reaper";
+
+// 세션 자동 종료 임계값. 발표자 이탈(심장박동 끊김)/무음 시 비용을 끊기 위함.
+const HEARTBEAT_TIMEOUT_MS = 90_000; // 90초 — 절전/닫힘/전원차단 감지
+const IDLE_AUDIO_TIMEOUT_MS = 300_000; // 5분 — 무음 지속 감지
+const REAP_INTERVAL_MS = 30_000; // 리퍼 점검 주기
 
 export interface TranslationInfo {
   language: string;
@@ -44,6 +50,8 @@ export interface SessionInfo {
   sessionId: string;
   organizerIdentity: string;
   createdAt: Date;
+  // 발표자의 마지막 심장박동(status 폴링) 시각(ms). 리퍼가 이탈 판정에 쓴다.
+  lastHeartbeatAt: number;
   allowedLanguages?: string[];
   // 이 세션의 통역을 돌릴 방송자 소유 Gemini 키. 서버 메모리에만 존재하며
   // 디스크·로그에 절대 기록하지 않는다.
@@ -80,6 +88,9 @@ class TranslationSessionManager {
 
   // Map<sessionId, TranslationBridge> — 질문자 언어 → ko. 질문하는 동안에만 존재.
   private questionBridges: Map<string, TranslationBridge> = new Map();
+
+  // 유휴/이탈 세션을 주기적으로 종료하는 리퍼 타이머. 세션이 있을 때만 돈다.
+  private reaperTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor() {}
 
@@ -118,6 +129,7 @@ class TranslationSessionManager {
       sessionId,
       organizerIdentity,
       createdAt: new Date(),
+      lastHeartbeatAt: Date.now(),
       allowedLanguages,
       geminiApiKey,
       presentationContext,
@@ -126,7 +138,66 @@ class TranslationSessionManager {
     };
     this.sessions.set(sessionId, info);
     console.log(`[SessionManager] Created session ${sessionId} for organizer ${organizerIdentity} with allowed languages: ${allowedLanguages?.join(", ") || "all"}`);
+    this.ensureReaper();
     return info;
+  }
+
+  /**
+   * 발표자의 심장박동 갱신. 발표자 페이지가 주기적으로 호출하는 status 폴링에서
+   * 불린다. 이 호출이 90초 넘게 끊기면(절전/닫힘/전원차단) 리퍼가 세션을 내린다.
+   */
+  touchHeartbeat(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) session.lastHeartbeatAt = Date.now();
+  }
+
+  /** 세션의 마지막 발화 활동 시각(ms) — 모든 브릿지 lastSpeechAt 중 최댓값,
+   *  하한은 세션 생성 시각(아직 발화가 없으면 생성 시점부터 무음 타이머 시작). */
+  private lastAudioAt(sessionId: string): number {
+    let latest = 0;
+    const langMap = this.translations.get(sessionId);
+    if (langMap) for (const [, b] of langMap) latest = Math.max(latest, b.lastSpeechAt);
+    const host = this.hostTranscriptions.get(sessionId);
+    if (host) latest = Math.max(latest, host.lastSpeechAt);
+    const q = this.questionBridges.get(sessionId);
+    if (q) latest = Math.max(latest, q.lastSpeechAt);
+    const created = this.sessions.get(sessionId)?.createdAt.getTime() ?? 0;
+    return Math.max(latest, created);
+  }
+
+  /** 세션이 하나라도 있으면 리퍼를 켜고, 없으면 끈다. */
+  private ensureReaper(): void {
+    if (this.reaperTimer) return;
+    this.reaperTimer = setInterval(() => void this.reapIdleSessions(), REAP_INTERVAL_MS);
+  }
+
+  private stopReaperIfIdle(): void {
+    if (this.reaperTimer && this.sessions.size === 0) {
+      clearInterval(this.reaperTimer);
+      this.reaperTimer = null;
+    }
+  }
+
+  /** 유휴/이탈 세션을 종료한다. 리퍼 타이머가 주기적으로 호출. */
+  private async reapIdleSessions(): Promise<void> {
+    const now = Date.now();
+    // 순회 중 삭제하므로 스냅샷을 뜬다.
+    for (const session of [...this.sessions.values()]) {
+      const reason = evaluateReap({
+        now,
+        lastHeartbeatAt: session.lastHeartbeatAt,
+        lastAudioAt: this.lastAudioAt(session.sessionId),
+        heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
+        idleAudioTimeoutMs: IDLE_AUDIO_TIMEOUT_MS,
+      });
+      if (reason) {
+        console.log(
+          `[SessionManager] Reaped session ${session.sessionId} (reason: ${reason})`
+        );
+        await this.removeAllTranslations(session.sessionId);
+      }
+    }
+    this.stopReaperIfIdle();
   }
 
   getSession(sessionId: string): SessionInfo | undefined {
@@ -437,6 +508,7 @@ class TranslationSessionManager {
     await this.stopQuestionBridge(sessionId);
     await this.stopHostTranscription(sessionId);
     this.sessions.delete(sessionId);
+    this.stopReaperIfIdle();
     console.log(
       `[SessionManager] Removed all bridges and session for ${sessionId}`
     );

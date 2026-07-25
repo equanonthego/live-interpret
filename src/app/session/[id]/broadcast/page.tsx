@@ -200,6 +200,18 @@ function BroadcastControls({
     return () => clearInterval(interval);
   }, [fetchTranslations]);
 
+  // 발표자가 탭을 "실제로 닫을 때"(bfcache 아님) 세션을 즉시 종료해 Gemini·LiveKit
+  // 비용을 끊는다. keepalive로 언로드 중에도 요청이 전송된다. 절전/덮음(프리즈,
+  // event.persisted=true)은 서버 심장박동 리퍼(90초)가 대신 처리한다.
+  useEffect(() => {
+    const onPageHide = (e: PageTransitionEvent) => {
+      if (e.persisted) return;
+      fetch(`/api/sessions/${sessionId}`, { method: "DELETE", keepalive: true });
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => window.removeEventListener("pagehide", onPageHide);
+  }, [sessionId]);
+
   // Host captions: transcribe the organizer's own speech (source language) and
   // show it on the control panel. Starts a transcribe-only bridge server-side
   // and listens for its transcription data messages.

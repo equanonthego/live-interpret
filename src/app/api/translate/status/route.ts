@@ -29,6 +29,10 @@ export async function GET(req: NextRequest) {
   }
 
   const manager = TranslationSessionManager.getInstance();
+  // 이 엔드포인트는 발표자 페이지만 주기 폴링한다(청자는 쓰지 않음). 폴링을
+  // 발표자 심장박동으로 삼아, 폴링이 끊기면(절전/닫힘/전원차단) 리퍼가 세션을
+  // 자동 종료해 Gemini·LiveKit·서버 비용을 끊는다.
+  manager.touchHeartbeat(sessionId);
   const translations = manager.getActiveTranslations(sessionId);
 
   return NextResponse.json({ translations });

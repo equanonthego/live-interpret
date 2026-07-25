@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
     let eventId: string | undefined;
     let allowedLanguages: string[] | undefined = undefined;
     let geminiApiKey = "";
+    // 방송 비밀번호(선택). BROADCAST_PASSWORD 환경변수가 설정된 경우에만 검사한다.
+    let broadcastPassword = "";
     let pdfBytes: Uint8Array | null = null;
     let pdfMime = "";
     let pdfName = "";
@@ -42,6 +44,7 @@ export async function POST(req: NextRequest) {
       organizerName = (form.get("organizerName") as string) || "organizer";
       eventId = (form.get("eventId") as string) || undefined;
       geminiApiKey = ((form.get("geminiApiKey") as string) || "").trim();
+      broadcastPassword = (form.get("password") as string) || "";
       const langsRaw = form.get("allowedLanguages");
       if (typeof langsRaw === "string" && langsRaw.length > 0) {
         try {
@@ -84,6 +87,19 @@ export async function POST(req: NextRequest) {
       }
       geminiApiKey =
         typeof body.geminiApiKey === "string" ? body.geminiApiKey.trim() : "";
+      broadcastPassword =
+        typeof body.password === "string" ? body.password : "";
+    }
+
+    // 방송 비밀번호 게이트: BROADCAST_PASSWORD가 설정돼 있을 때만 검사한다.
+    // 미설정(개인 사용/개발)이면 통과 — 강사만 세션을 만들게 해 배포자의
+    // LiveKit·Cloud Run 자원이 임의로 소모되는 것을 막는 용도.
+    const expectedPassword = process.env.BROADCAST_PASSWORD;
+    if (expectedPassword && broadcastPassword !== expectedPassword) {
+      return NextResponse.json(
+        { error: "방송 비밀번호가 올바르지 않습니다." },
+        { status: 401 }
+      );
     }
 
     if (!geminiApiKey) {

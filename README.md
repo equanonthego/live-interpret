@@ -94,29 +94,42 @@ We recommend deploying to Google Cloud Run since the translation bridges are lon
 
 ### Deploy
 
+> **한국어 사용자용 지름길:** 리포 루트의 [`deploy.sh`](deploy.sh)가 아래 과정을
+> 서울 리전(`asia-northeast3`) + 이 앱의 실제 설정(BYOK)에 맞춰 담고 있습니다.
+> 최초 1회 `gcloud auth login` / `gcloud config set project` / API 활성화 후
+> `./deploy.sh create-secrets` 로 시크릿을 만들고, 이후엔 `./deploy.sh` 하나로 배포하세요.
+>
+> **다른 기관에 넘겨 각자 비용을 부담하게 하려면** → [docs/handover_deploy.md](docs/handover_deploy.md)
+> (자기 GCP·LiveKit·Gemini 계정으로 배포 → 세 청구서가 모두 그 기관으로 감).
+> 강사만 방송을 열게 하는 **방송 비밀번호**(`BROADCAST_PASSWORD`) 설정법도 포함.
+
 First, create secrets in Google Secret Manager (reads values from your `.env.local`):
 
 ```bash
 source <(grep -v '^#' .env.local | sed 's/^/export /')
 
-echo -n "$GEMINI_API_KEY" | gcloud secrets create gemini-api-key --data-file=-
 echo -n "$LIVEKIT_API_KEY" | gcloud secrets create livekit-api-key --data-file=-
 echo -n "$LIVEKIT_API_SECRET" | gcloud secrets create livekit-api-secret --data-file=-
 ```
+
+> **Note:** This app uses **BYOK** for Gemini — the broadcaster enters their own
+> Gemini API key when creating a session, so `GEMINI_API_KEY` is **not** read on
+> the server and no `gemini-api-key` secret is needed. Only the three LiveKit
+> values (`LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`) are used at runtime.
 
 Then deploy:
 
 ```bash
 gcloud run deploy live-translate \
   --source . \
-  --region us-central1 \
+  --region asia-northeast3 \
   --allow-unauthenticated \
   --min-instances 0 \
   --max-instances 1 \
+  --cpu 2 --memory 2Gi \
   --timeout 3600 \
   --no-cpu-throttling \
   --set-secrets "\
-GEMINI_API_KEY=gemini-api-key:latest,\
 LIVEKIT_API_KEY=livekit-api-key:latest,\
 LIVEKIT_API_SECRET=livekit-api-secret:latest" \
   --set-env-vars "\
@@ -126,7 +139,7 @@ LIVEKIT_URL=wss://your-project.livekit.cloud"
 For subsequent deployments (code changes only, retaining existing secrets and environment variables):
 
 ```bash
-gcloud run deploy live-translate --source . --region us-central1
+gcloud run deploy live-translate --source . --region asia-northeast3
 ```
 
 Key settings:
@@ -145,14 +158,14 @@ When running live events with high listener counts (e.g., 1k+ concurrent users) 
 * **The symptom:** If memory exceeds the default 512 MiB limit, the container will instantly crash with an Out-of-Memory (OOM) error, dropping all active listeners.
 * **The fix:** For 15–20 active languages, allocate at least **4 vCPUs and 4 GiB of memory** (and up to 8 vCPUs / 32 GiB for larger scales):
   ```bash
-  gcloud run services update live-translate --cpu 4 --memory 4Gi --region us-central1
+  gcloud run services update live-translate --cpu 4 --memory 4Gi --region asia-northeast3
   ```
 
 #### 2. Concurrency Limit (Preventing "Rate exceeded")
 * **The issue:** Cloud Run has a default concurrency limit of 80 requests. If 1,000 users try to join/refresh the page at the exact same instant (e.g., right when a link is shared), the excess requests will overflow the queue, and Google Front End (GFE) will reject them with a plain text `Rate exceeded.` error.
 * **The fix:** Increase request concurrency on the container to the maximum of **1000**:
   ```bash
-  gcloud run services update live-translate --concurrency 1000 --region us-central1
+  gcloud run services update live-translate --concurrency 1000 --region asia-northeast3
   ```
   *(Note: A 4 vCPU container is highly capable of generating thousands of JWT keys concurrently as it is a quick CPU cryptographic operation).*
 
@@ -185,7 +198,7 @@ To protect broadcast/session creation without restricting the public watch pages
 
   # 2. Update your Cloud Run service to mount the secret as an environment variable
   gcloud run services update live-translate \
-    --region=us-central1 \
+    --region=asia-northeast3 \
     --update-secrets="BROADCAST_PASSWORD=broadcast-password:latest"
   ```
 
@@ -195,7 +208,7 @@ When configured, the application will automatically prompt organizers for the pa
 To restrict access to specific Google accounts, enable Identity-Aware Proxy (IAP). This adds a Google Sign-In page — only authorized users can access the app.
 
 ```bash
-gcloud run services update live-translate --region us-central1 --iap
+gcloud run services update live-translate --region asia-northeast3 --iap
 ```
 
 > **Note:** IAP locks down the entire app, including the attendee watch page. See [docs/authentication.md](docs/authentication.md) for full setup instructions.

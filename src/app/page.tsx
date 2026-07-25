@@ -16,7 +16,7 @@
 
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_INTERPRET_LANGUAGES } from "@/lib/interpret-config";
 import type { PresentationContext } from "@/lib/glossary-extractor";
@@ -39,6 +39,18 @@ export default function Home() {
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [keyStatus, setKeyStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [keyError, setKeyError] = useState<string | null>(null);
+
+  // 방송 비밀번호 게이트: 서버에 BROADCAST_PASSWORD가 설정돼 있을 때만 입력칸을
+  // 노출한다(미설정이면 개인 사용/개발이라 그대로 통과).
+  const [passwordRequired, setPasswordRequired] = useState(false);
+  const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then((d) => setPasswordRequired(!!d.passwordRequired))
+      .catch((err) => console.error("Failed to check auth status:", err));
+  }, []);
 
   const onKeyChange = (v: string) => {
     setGeminiApiKey(v);
@@ -131,6 +143,7 @@ export default function Home() {
         JSON.stringify(DEFAULT_INTERPRET_LANGUAGES)
       );
       form.append("geminiApiKey", geminiApiKey.trim());
+      if (passwordRequired) form.append("password", password);
       // 이미 분석한 컨텍스트가 있으면 그대로 넘겨 재분석을 피한다.
       if (analysis) {
         form.append("presentationContext", JSON.stringify(analysis));
@@ -240,6 +253,19 @@ export default function Home() {
               <p style={{ color: "var(--error)", fontSize: 13, marginTop: 8 }}>{keyError}</p>
             )}
           </div>
+
+          {/* 방송 비밀번호 — 서버에 BROADCAST_PASSWORD가 설정된 경우에만 노출 */}
+          {passwordRequired && (
+            <input
+              type="password"
+              className="input-field"
+              placeholder="방송 비밀번호 입력"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{ textAlign: "center" }}
+              disabled={loading}
+            />
+          )}
 
           {/* 발표자료 드롭존 — 이벤트 ID 대신. 클릭/드래그&드롭으로 PDF 업로드 */}
           <div
@@ -380,7 +406,11 @@ export default function Home() {
           <button
             className="btn btn-dark"
             onClick={createSession}
-            disabled={loading || keyStatus !== "ok"}
+            disabled={
+              loading ||
+              keyStatus !== "ok" ||
+              (passwordRequired && !password.trim())
+            }
             id="create-session-btn"
           >
             {loading ? (
