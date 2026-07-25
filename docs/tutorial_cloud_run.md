@@ -202,7 +202,7 @@ Run the deployment command. Note the specific Cloud Run production scaling confi
 ```bash
 gcloud run deploy live-translate \
   --source . \
-  --region us-central1 \
+  --region asia-northeast3 \
   --allow-unauthenticated \
   --min-instances 0 \
   --max-instances 1 \

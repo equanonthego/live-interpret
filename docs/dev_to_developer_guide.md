@@ -178,7 +178,7 @@ Run the deployment command. Note the specific Cloud Run configurations required:
 ```bash
 gcloud run deploy live-translate \
   --source . \
-  --region us-central1 \
+  --region asia-northeast3 \
   --allow-unauthenticated \
   --min-instances 0 \
   --max-instances 1 \
@@ -196,7 +196,7 @@ LIVEKIT_URL=wss://your-project.livekit.cloud"
 Once your service configuration and secrets are set, you can deploy code updates without repeating or redefining the environment variables:
 
 ```bash
-gcloud run deploy live-translate --source . --region us-central1
+gcloud run deploy live-translate --source . --region asia-northeast3
 ```
 Google Cloud Run automatically preserves all environment variables, secrets, scaling limits, and CPU allocations from the previous revision.
 

@@ -87,7 +87,7 @@ If the local tests pass but the Cloud Run tests fail, verify the Cloud Run confi
 Verify that the environment variables and Secret Manager mappings are correctly assigned:
 ```bash
 gcloud run services describe live-translate \
-  --region us-central1 \
+  --region asia-northeast3 \
   --format="json(spec.template.spec.containers[0].env)"
 ```
 
