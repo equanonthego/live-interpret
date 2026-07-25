@@ -44,6 +44,7 @@ import { GEMINI_LIVE_MODEL, GEMINI_VOICE } from "./interpret-config";
 import type { PresentationContext } from "./glossary-extractor";
 import { AudioInputPacer, virtualMicrophoneConfig } from "./audio-input-pacer";
 import { CaptionSegmenter } from "./caption-segmenter";
+import { tcpConnectMs, RollingLatency, peakAmplitude } from "./latency-probe";
 
 export type BridgeStatus = "starting" | "active" | "error" | "closed";
 
@@ -98,6 +99,24 @@ export class TranslationBridge {
   // When true, this bridge only transcribes the organizer's own speech (no
   // translated audio track is published). Used for the host's Korean captions.
   private readonly transcribeOnly: boolean;
+
+  // --- 지연 계측(LATENCY) — 리전 비교용. 통역 동작에는 영향 없음. ---
+  // 발화(임계 이상 진폭)가 마지막으로 들어온 시각. 번역 음성이 나오기 시작한
+  // 시점과의 차이가 "말 끝 → 통역 음성 시작" 체감 지연이 된다.
+  private lastSpeechInputAt = 0;
+  // Gemini에서 마지막 오디오 프레임을 받은 시각. 이 간격이 길면 새 응답 시작.
+  private lastOutputFrameAt = 0;
+  private readonly respLatency = new RollingLatency();
+  // 자막(outputTranscription) 경로 계측. 자막 전용(호스트) 브리지는 오디오를
+  // 받지 않으므로 이쪽으로 "말끝→자막" 지연을 잰다. 청자 없이도 측정 가능.
+  private lastTranscriptAt = 0;
+  private readonly captionLatency = new RollingLatency();
+  // Gemini·LiveKit 까지의 TCP 왕복을 주기적으로 재는 타이머.
+  private latencyTimer: ReturnType<typeof setInterval> | null = null;
+  // 발화로 간주할 Int16 피크 임계값(약 6% full-scale). 이보다 작으면 무음으로 본다.
+  private static readonly SPEECH_PEAK = 2000;
+  // 출력이 이 시간(ms) 이상 끊겼다가 다시 오면 "새 번역 응답 시작"으로 본다.
+  private static readonly OUTPUT_GAP_MS = 500;
 
   // 발표자료에서 추출한 맥락/용어집. 있으면 systemInstruction으로 주입한다.
   private readonly presentationContext?: PresentationContext;
@@ -177,6 +196,11 @@ export class TranslationBridge {
       `[TranslationBridge:${this.targetLanguage}] Stopping bridge`
     );
     this.status = "closed";
+
+    if (this.latencyTimer) {
+      clearInterval(this.latencyTimer);
+      this.latencyTimer = null;
+    }
 
     this.segmenter.reset();
 
@@ -497,6 +521,49 @@ export class TranslationBridge {
     return { parts: [{ text: lines.join("\n") }] };
   }
 
+  /**
+   * [LATENCY] Gemini·LiveKit 엔드포인트까지의 TCP 왕복을 주기적으로 재고, 그동안
+   * 모인 번역 응답 지연을 요약해 로그로 남긴다. 리전(브릿지 위치)이 바뀌면 이
+   * 두 RTT가 바뀌므로, 로컬 vs 클라우드 배포를 이 로그 한 줄로 비교할 수 있다.
+   * 계측 전용 — 통역 오디오 경로에는 관여하지 않는다.
+   */
+  private startLatencyProbe(): void {
+    if (this.latencyTimer) return; // 재연결 시 중복 시작 방지
+
+    let livekitHost = "";
+    let livekitPort = 443;
+    try {
+      const u = new URL(this.livekitUrl);
+      livekitHost = u.hostname;
+      livekitPort = u.port ? Number(u.port) : u.protocol === "ws:" ? 80 : 443;
+    } catch {
+      /* URL 파싱 실패 시 LiveKit RTT는 건너뛴다 */
+    }
+
+    const probe = async () => {
+      const fmt = (p: Promise<number>) =>
+        p.then((ms) => `${ms}ms`).catch((e) => `실패(${(e as Error).message})`);
+      const [gem, lk] = await Promise.all([
+        fmt(tcpConnectMs("generativelanguage.googleapis.com", 443)),
+        livekitHost
+          ? fmt(tcpConnectMs(livekitHost, livekitPort))
+          : Promise.resolve("n/a"),
+      ]);
+      const fmtSummary = (r: RollingLatency) => {
+        const s = r.summary();
+        return s
+          ? `표본 ${s.count} · min ${s.min} / 중앙값 ${s.median} / p95 ${s.p95} / max ${s.max} ms`
+          : "표본 없음";
+      };
+      console.log(
+        `[TranslationBridge:${this.targetLanguage}] [LATENCY] RTT Gemini=${gem} LiveKit=${lk} | 번역음성 ${fmtSummary(this.respLatency)} | 자막 ${fmtSummary(this.captionLatency)}`
+      );
+    };
+
+    void probe(); // 시작 직후 1회
+    this.latencyTimer = setInterval(() => void probe(), 30_000);
+  }
+
   private sendGeminiSetup(ws: WebSocket = this.geminiWs!): void {
     const systemInstruction = this.buildSystemInstruction();
     const setupMessage = {
@@ -568,6 +635,7 @@ export class TranslationBridge {
           `[TranslationBridge:${this.targetLanguage}] Gemini setup complete`
         );
         this.geminiSetupComplete = true;
+        this.startLatencyProbe(); // [LATENCY] 계측 시작(중복 호출 안전)
         return;
       }
 
@@ -604,6 +672,20 @@ export class TranslationBridge {
         for (const part of parts) {
           if (part.inlineData?.data) {
             this.framesReceivedFromGemini++;
+            // [LATENCY] 출력이 OUTPUT_GAP_MS 이상 끊겼다가 온 첫 프레임 =
+            // 새 번역 응답의 시작. 직전 발화 입력과의 차이를 "말 끝 → 통역
+            // 음성 시작" 지연으로 기록한다. 발화 없이 시작된 응답은 건너뛴다.
+            const now = Date.now();
+            const isBurstStart =
+              now - this.lastOutputFrameAt > TranslationBridge.OUTPUT_GAP_MS;
+            this.lastOutputFrameAt = now;
+            if (isBurstStart && this.lastSpeechInputAt > 0) {
+              const latencyMs = now - this.lastSpeechInputAt;
+              this.respLatency.push(latencyMs);
+              console.log(
+                `[TranslationBridge:${this.targetLanguage}] [LATENCY] 번역 응답 지연(말끝→음성): ${latencyMs}ms (표본 ${this.respLatency.count})`
+              );
+            }
             if (this.framesReceivedFromGemini <= 3 || this.framesReceivedFromGemini % 100 === 0) {
               console.log(
                 `[TranslationBridge:${this.targetLanguage}] Received audio frame #${this.framesReceivedFromGemini} from Gemini (${part.inlineData.data.length} bytes base64)`
@@ -621,6 +703,19 @@ export class TranslationBridge {
       // 학생이 다른 언어로 질문하면 한국어로 번역돼 강연자가 이해할 수 있다.
       // (소스 언어는 고정하지 않고 자동 감지 — 청자는 원 언어대로 골라 듣는다.)
       if (serverContent?.outputTranscription?.text) {
+        // [LATENCY] 자막이 OUTPUT_GAP_MS 이상 끊겼다가 온 첫 조각 = 새 발화의
+        // 자막 시작. 직전 발화 입력과의 차이를 "말끝→자막" 지연으로 기록한다.
+        const now = Date.now();
+        const isCaptionBurstStart =
+          now - this.lastTranscriptAt > TranslationBridge.OUTPUT_GAP_MS;
+        this.lastTranscriptAt = now;
+        if (isCaptionBurstStart && this.lastSpeechInputAt > 0) {
+          const latencyMs = now - this.lastSpeechInputAt;
+          this.captionLatency.push(latencyMs);
+          console.log(
+            `[TranslationBridge:${this.targetLanguage}] [LATENCY] 자막 지연(말끝→자막): ${latencyMs}ms (표본 ${this.captionLatency.count})`
+          );
+        }
         // turnComplete가 같이 왔다면 바로 아래 블록의 close()가 이 조각까지
         // 묶어 final로 내보낸다.
         this.segmenter.push(serverContent.outputTranscription.text);
@@ -790,6 +885,11 @@ export class TranslationBridge {
         const { done, value } = await reader.read();
         // 새 리더로 교체됐으면(세대 불일치) 이 루프는 조용히 종료한다.
         if (done || gen !== this.pipeGeneration) break;
+        // [LATENCY] 실제 발화가 들어온 시각을 기록(무음 프레임은 제외). 마이크
+        // 상시 프레임 중 임계 이상 진폭만 발화로 본다.
+        if (peakAmplitude(value.data) >= TranslationBridge.SPEECH_PEAK) {
+          this.lastSpeechInputAt = Date.now();
+        }
         // 즉시 전송하지 않고 페이서 버퍼에 넣는다. 실제 송출은 페이서 타이머가
         // 20ms 간격으로 수행한다.
         this.pacer?.push(value.data);
