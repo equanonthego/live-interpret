@@ -98,6 +98,10 @@ We recommend deploying to Google Cloud Run since the translation bridges are lon
 > 서울 리전(`asia-northeast3`) + 이 앱의 실제 설정(BYOK)에 맞춰 담고 있습니다.
 > 최초 1회 `gcloud auth login` / `gcloud config set project` / API 활성화 후
 > `./deploy.sh create-secrets` 로 시크릿을 만들고, 이후엔 `./deploy.sh` 하나로 배포하세요.
+>
+> **다른 기관에 넘겨 각자 비용을 부담하게 하려면** → [docs/handover_deploy.md](docs/handover_deploy.md)
+> (자기 GCP·LiveKit·Gemini 계정으로 배포 → 세 청구서가 모두 그 기관으로 감).
+> 강사만 방송을 열게 하는 **방송 비밀번호**(`BROADCAST_PASSWORD`) 설정법도 포함.
 
 First, create secrets in Google Secret Manager (reads values from your `.env.local`):
 
