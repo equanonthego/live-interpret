@@ -104,6 +104,10 @@ export class TranslationBridge {
   // 발화(임계 이상 진폭)가 마지막으로 들어온 시각. 번역 음성이 나오기 시작한
   // 시점과의 차이가 "말 끝 → 통역 음성 시작" 체감 지연이 된다.
   private lastSpeechInputAt = 0;
+  /** 세션 리퍼가 무음 판정에 쓰는, 이 브릿지의 마지막 발화 감지 시각(ms). */
+  get lastSpeechAt(): number {
+    return this.lastSpeechInputAt;
+  }
   // Gemini에서 마지막 오디오 프레임을 받은 시각. 이 간격이 길면 새 응답 시작.
   private lastOutputFrameAt = 0;
   private readonly respLatency = new RollingLatency();
