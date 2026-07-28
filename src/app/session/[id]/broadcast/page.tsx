@@ -42,6 +42,13 @@ interface HostCaption {
   final: boolean;
 }
 
+// 토큰 수를 사람이 읽기 쉬운 축약형으로. 1_250_000 → "1.3M".
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
 function BroadcastControls({
   sessionId,
   onEndBroadcast,
@@ -52,6 +59,9 @@ function BroadcastControls({
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
   const [translations, setTranslations] = useState<TranslationInfo[]>([]);
+  const [usageTokens, setUsageTokens] = useState(0);
+  const [estimatedUsd, setEstimatedUsd] = useState<number | null>(null);
+  const [maxLanguages, setMaxLanguages] = useState(8);
   const [listenerCount, setListenerCount] = useState(0);
   const [hostCaptions, setHostCaptions] = useState<HostCaption[]>([]);
   const captionEndRef = useRef<HTMLDivElement | null>(null);
@@ -189,6 +199,9 @@ function BroadcastControls({
       const res = await fetch(`/api/translate/status?sessionId=${sessionId}`);
       const data = await res.json();
       setTranslations(data.translations || []);
+      setUsageTokens(data.usage?.totalTokens ?? 0);
+      setEstimatedUsd(data.estimatedUsd ?? null);
+      setMaxLanguages(data.maxLanguages ?? 8);
     } catch (err) {
       console.error("Failed to fetch translations:", err);
     }
@@ -804,7 +817,16 @@ function BroadcastControls({
       {/* Active translations */}
       <div style={{ padding: "28px 0" }}>
         <span className="label" style={{ marginBottom: 16, display: "block" }}>
-          번역 · {translations.length}개
+          번역 · {translations.length}/{maxLanguages}개
+          {usageTokens > 0 && (
+            <span
+              className="mono"
+              style={{ color: "var(--fg-secondary)", fontSize: 12, marginLeft: 8 }}
+            >
+              · {formatTokens(usageTokens)} 토큰
+              {estimatedUsd !== null && ` · 약 $${estimatedUsd.toFixed(2)}`}
+            </span>
+          )}
         </span>
 
         {translations.length === 0 ? (

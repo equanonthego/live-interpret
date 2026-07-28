@@ -16,6 +16,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import TranslationSessionManager from "@/lib/translation-session-manager";
+import { MAX_CONCURRENT_LANGUAGES, GEMINI_LIVE_USD_PER_1M_TOKENS } from "@/lib/interpret-config";
+import { estimateUsd } from "@/lib/usage-meter";
 
 // GET /api/translate/status — List active translations for a session
 export async function GET(req: NextRequest) {
@@ -34,6 +36,13 @@ export async function GET(req: NextRequest) {
   // 자동 종료해 Gemini·LiveKit·서버 비용을 끊는다.
   manager.touchHeartbeat(sessionId);
   const translations = manager.getActiveTranslations(sessionId);
+  const usage = manager.getSessionUsage(sessionId);
+  const estimatedUsd = estimateUsd(usage, GEMINI_LIVE_USD_PER_1M_TOKENS);
 
-  return NextResponse.json({ translations });
+  return NextResponse.json({
+    translations,
+    usage,
+    maxLanguages: MAX_CONCURRENT_LANGUAGES,
+    estimatedUsd,
+  });
 }

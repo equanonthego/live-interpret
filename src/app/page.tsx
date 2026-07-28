@@ -18,7 +18,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DEFAULT_INTERPRET_LANGUAGES } from "@/lib/interpret-config";
 import type { PresentationContext } from "@/lib/glossary-extractor";
 
 export default function Home() {
@@ -138,10 +137,6 @@ export default function Home() {
     try {
       const form = new FormData();
       form.append("organizerName", "host");
-      form.append(
-        "allowedLanguages",
-        JSON.stringify(DEFAULT_INTERPRET_LANGUAGES)
-      );
       form.append("geminiApiKey", geminiApiKey.trim());
       if (passwordRequired) form.append("password", password);
       // 이미 분석한 컨텍스트가 있으면 그대로 넘겨 재분석을 피한다.
@@ -252,6 +247,17 @@ export default function Home() {
             {keyStatus === "fail" && (
               <p style={{ color: "var(--error)", fontSize: 13, marginTop: 8 }}>{keyError}</p>
             )}
+            <div style={{ marginTop: 8, textAlign: "left" }}>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="body-sm"
+                style={{ color: "var(--fg-secondary)", textDecoration: "underline" }}
+              >
+                사용량·충전 →
+              </a>
+            </div>
           </div>
 
           {/* 방송 비밀번호 — 서버에 BROADCAST_PASSWORD가 설정된 경우에만 노출 */}

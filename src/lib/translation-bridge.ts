@@ -45,6 +45,7 @@ import type { PresentationContext } from "./glossary-extractor";
 import { AudioInputPacer, virtualMicrophoneConfig } from "./audio-input-pacer";
 import { CaptionSegmenter } from "./caption-segmenter";
 import { tcpConnectMs, RollingLatency, peakAmplitude } from "./latency-probe";
+import { emptyUsage, accumulateUsage, type UsageTotals } from "./usage-meter";
 
 export type BridgeStatus = "starting" | "active" | "error" | "closed";
 
@@ -68,6 +69,10 @@ export class TranslationBridge {
   public status: BridgeStatus = "starting";
   public subscriberCount: number = 0;
   public onStop?: () => void;
+
+  // 이 브릿지가 Gemini로부터 계량한 세션 누계 토큰. 해체 시 매니저의
+  // retiredUsage로 flush된다. usageMetadata는 누계로 오므로 max 누적.
+  public usage: UsageTotals = emptyUsage();
 
   // Gemini Live API config
   private readonly geminiApiKey: string;
@@ -624,6 +629,7 @@ export class TranslationBridge {
 
     try {
       const message = JSON.parse(data.toString());
+      this.usage = accumulateUsage(this.usage, message);
 
       // Log all messages before setup is complete for debugging
       if (!this.geminiSetupComplete) {

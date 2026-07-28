@@ -101,6 +101,36 @@ export const SUPPORTED_LANGUAGES: Language[] = [
   { code: "zu", name: "Zulu", flag: "🇿🇦" },
 ];
 
+const SUPPORTED_CODES = new Set(SUPPORTED_LANGUAGES.map((l) => l.code));
+
+/**
+ * BCP-47 언어 태그(navigator.language 등)를 이 앱의 지원 코드로 정규화한다.
+ * 지원 목록에 없으면 undefined. 휠을 기기 언어 위치에서 열기 위해 쓴다.
+ */
+export function resolveDeviceLanguage(tag: string): string | undefined {
+  const raw = (tag || "").trim().toLowerCase();
+  if (!raw) return undefined;
+  const parts = raw.split("-");
+  const base = parts[0];
+
+  // 중국어: 스크립트/지역으로 간체·번체 판별
+  if (base === "zh") {
+    if (raw.includes("hant") || parts.includes("tw") || parts.includes("hk") || parts.includes("mo")) {
+      return "zh-Hant";
+    }
+    return "zh-Hans";
+  }
+  // 포르투갈어: 브라질만 pt-BR, 나머지(pt/pt-pt 등)는 pt-PT
+  if (base === "pt") {
+    return parts.includes("br") ? "pt-BR" : "pt-PT";
+  }
+  // 레거시 별칭
+  if (base === "nb") return "no";
+  if (base === "iw") return "he";
+
+  return SUPPORTED_CODES.has(base) ? base : undefined;
+}
+
 export function getLanguageByCode(code: string): Language | undefined {
   const normalized =
     code === "nb" ? "no" :
