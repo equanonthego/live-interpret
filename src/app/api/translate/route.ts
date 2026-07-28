@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import TranslationSessionManager from "@/lib/translation-session-manager";
+import { LanguageCapReachedError } from "@/lib/language-cap";
 
 // POST /api/translate — Request a translation stream for a language
 export async function POST(req: NextRequest) {
@@ -66,11 +67,26 @@ export async function POST(req: NextRequest) {
     }
 
     // Get or create the translation bridge
-    const bridge = await manager.getOrCreate(
-      sessionId,
-      targetLanguage,
-      session.organizerIdentity
-    );
+    let bridge;
+    try {
+      bridge = await manager.getOrCreate(
+        sessionId,
+        targetLanguage,
+        session.organizerIdentity
+      );
+    } catch (err) {
+      if (err instanceof LanguageCapReachedError) {
+        return NextResponse.json(
+          {
+            error: "이 방송의 동시 통역 언어 정원이 찼습니다. 열려 있는 언어 중에서 선택하세요.",
+            code: "LANGUAGE_CAP_REACHED",
+            openLanguages: err.openLanguages,
+          },
+          { status: 409 }
+        );
+      }
+      throw err;
+    }
 
     return NextResponse.json({
       translatorIdentity: bridge.identity,

@@ -24,7 +24,8 @@
  */
 
 import { TranslationBridge, BridgeStatus } from "./translation-bridge";
-import { SOURCE_LANGUAGE } from "./interpret-config";
+import { SOURCE_LANGUAGE, MAX_CONCURRENT_LANGUAGES } from "./interpret-config";
+import { canOpenLanguage, LanguageCapReachedError } from "./language-cap";
 import type { PresentationContext } from "./glossary-extractor";
 import { evaluateReap } from "./session-reaper";
 
@@ -269,6 +270,14 @@ class TranslationSessionManager {
         await existingBridge.stop();
         languageMap.delete(targetLanguage);
       }
+    }
+
+    // 동시 상한 게이트. 이 지점부터 languageMap.set(...)까지 await가 없어
+    // 단일 스레드에서 원자적으로 실행되므로, 두 청자가 동시에 마지막 자리를
+    // 요청해도 상한을 넘겨 브릿지가 초과 생성되지 않는다.
+    const openLanguages = [...(this.translations.get(sessionId)?.keys() ?? [])];
+    if (!canOpenLanguage(openLanguages, targetLanguage, MAX_CONCURRENT_LANGUAGES)) {
+      throw new LanguageCapReachedError(openLanguages);
     }
 
     // Create a new bridge
