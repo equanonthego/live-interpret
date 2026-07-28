@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import TranslationSessionManager from "@/lib/translation-session-manager";
+import { MAX_CONCURRENT_LANGUAGES } from "@/lib/interpret-config";
 
 // GET /api/sessions/:sessionId — Get session info
 export async function GET(
@@ -43,6 +44,7 @@ export async function GET(
     presenter: presentationContext?.presenter ?? "",
     hasPresentation: !!presentationFile,
     presentationMime: presentationFile?.mime ?? "",
+    maxLanguages: MAX_CONCURRENT_LANGUAGES,
     translations,
   });
 }
