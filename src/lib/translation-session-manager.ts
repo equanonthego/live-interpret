@@ -242,8 +242,8 @@ class TranslationSessionManager {
     // SOURCE_LANGUAGE is reserved for the host-caption bridge (see
     // getOrCreateHostTranscription) — an attendee-facing bridge targeting the
     // same language would collide with it on destination routing and segment
-    // ids. This must hold regardless of what DEFAULT_INTERPRET_LANGUAGES or a
-    // session's allowedLanguages happen to contain.
+    // ids. This must hold regardless of what a session's allowedLanguages
+    // happen to contain.
     if (targetLanguage === SOURCE_LANGUAGE) {
       throw new Error(
         `Cannot create an attendee translation bridge for "${SOURCE_LANGUAGE}" — reserved for host transcription`

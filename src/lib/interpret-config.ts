@@ -1,6 +1,7 @@
-// 청자에게 기본 제공할 언어 코드. src/lib/languages.ts의 code와 일치해야 한다.
-// 여기만 수정하면 강의자 랜딩의 기본 선택 언어가 바뀐다.
-export const DEFAULT_INTERPRET_LANGUAGES = ["en", "zh-Hans", "ja", "vi", "ru"];
+// 세션당 동시에 열 수 있는 청자 언어(=Gemini Live 브릿지) 최대 개수.
+// 청자는 79개 전부에서 고를 수 있으나, 동시 개설은 이 수로 제한해 비용 상한을
+// 유지한다. 상한에 닿으면 이후 청자는 이미 열린 언어 중에서만 고를 수 있다.
+export const MAX_CONCURRENT_LANGUAGES = 8;
 
 // 발화(소스) 언어 — 강의 시나리오 기본값.
 export const SOURCE_LANGUAGE = "ko";
@@ -19,3 +20,12 @@ export const GEMINI_VOICE = "Kore";
 // 발표자료 업로드 최대 크기(바이트). 과도한 업로드로 서버 메모리가 급증하는
 // 것을 막는다.
 export const MAX_PRESENTATION_BYTES = 20 * 1024 * 1024; // 20MB
+
+// 사용량 계량을 통화로 환산할 때 쓰는 100만 토큰당 USD 단가. gemini-3.5-live-
+// translate-preview는 프리뷰라 공개 단가를 확정할 수 없으므로 env로만 받는다.
+// 미설정(null)이면 금액을 표시하지 않고 토큰 수만 노출한다(틀린 금액 방지).
+export const GEMINI_LIVE_USD_PER_1M_TOKENS: number | null =
+  process.env.GEMINI_LIVE_USD_PER_1M_TOKENS &&
+  !Number.isNaN(Number(process.env.GEMINI_LIVE_USD_PER_1M_TOKENS))
+    ? Number(process.env.GEMINI_LIVE_USD_PER_1M_TOKENS)
+    : null;
