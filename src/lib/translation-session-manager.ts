@@ -26,6 +26,7 @@
 import { TranslationBridge, BridgeStatus } from "./translation-bridge";
 import { SOURCE_LANGUAGE, MAX_CONCURRENT_LANGUAGES } from "./interpret-config";
 import { canOpenLanguage, LanguageCapReachedError } from "./language-cap";
+import { emptyUsage, mergeUsage, type UsageTotals } from "./usage-meter";
 import type { PresentationContext } from "./glossary-extractor";
 import { evaluateReap } from "./session-reaper";
 
@@ -65,6 +66,9 @@ export interface SessionInfo {
   currentSpeaker?: string;
   // 손든 청자 대기열 (순서대로).
   handRaised: HandRaise[];
+  // 이미 해체된 브릿지들의 토큰 누계. 살아있는 브릿지 usage와 합쳐 세션 총량을
+  // 낸다. 이게 없으면 청자가 나가 브릿지가 해체될 때 총량이 거꾸로 줄어든다.
+  retiredUsage: UsageTotals;
 }
 
 export interface FloorState {
@@ -136,6 +140,7 @@ class TranslationSessionManager {
       presentationContext,
       presentationFile,
       handRaised: [],
+      retiredUsage: emptyUsage(),
     };
     this.sessions.set(sessionId, info);
     console.log(`[SessionManager] Created session ${sessionId} for organizer ${organizerIdentity} with allowed languages: ${allowedLanguages?.join(", ") || "all"}`);
@@ -439,6 +444,35 @@ class TranslationSessionManager {
     }
   }
 
+  // 브릿지를 해체하기 직전에 그 usage를 세션 누계로 옮긴다. 반드시 bridge.stop()
+  // 및 맵에서 제거하기 "전"에 호출해, 살아있는 브릿지 합산과 이중 계상되지 않게
+  // 한다(옮긴 뒤엔 맵에서 사라지므로 getSessionUsage가 다시 세지 않는다).
+  private flushBridgeUsage(sessionId: string, bridge: TranslationBridge): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.retiredUsage = mergeUsage(session.retiredUsage, bridge.usage);
+  }
+
+  /**
+   * 세션의 현재까지 총 토큰 사용량 = 해체된 브릿지 누계(retiredUsage) +
+   * 살아있는 모든 브릿지(청자 번역 + 호스트 자막 + 질문)의 usage 합.
+   */
+  getSessionUsage(sessionId: string): UsageTotals {
+    const session = this.sessions.get(sessionId);
+    let total = session ? session.retiredUsage : emptyUsage();
+
+    const languageMap = this.translations.get(sessionId);
+    if (languageMap) {
+      for (const [, bridge] of languageMap) total = mergeUsage(total, bridge.usage);
+    }
+    const host = this.hostTranscriptions.get(sessionId);
+    if (host) total = mergeUsage(total, host.usage);
+    const question = this.questionBridges.get(sessionId);
+    if (question) total = mergeUsage(total, question.usage);
+
+    return total;
+  }
+
   getActiveTranslations(sessionId: string): TranslationInfo[] {
     const languageMap = this.translations.get(sessionId);
     if (!languageMap) return [];
@@ -478,6 +512,7 @@ class TranslationSessionManager {
       console.log(
         `[SessionManager] No more subscribers for ${targetLanguage}, tearing down bridge`
       );
+      this.flushBridgeUsage(sessionId, bridge);
       await bridge.stop();
       languageMap.delete(targetLanguage);
 
@@ -497,6 +532,7 @@ class TranslationSessionManager {
 
     const bridge = languageMap.get(targetLanguage);
     if (bridge) {
+      this.flushBridgeUsage(sessionId, bridge);
       await bridge.stop();
       languageMap.delete(targetLanguage);
       console.log(
@@ -509,6 +545,7 @@ class TranslationSessionManager {
     const languageMap = this.translations.get(sessionId);
     if (languageMap) {
       for (const [, bridge] of languageMap) {
+        this.flushBridgeUsage(sessionId, bridge);
         await bridge.stop();
       }
       languageMap.clear();
