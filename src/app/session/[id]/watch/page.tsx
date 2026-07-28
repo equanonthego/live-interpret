@@ -70,7 +70,7 @@ function splitIntoParagraphs(text: string, sentencesPerParagraph = 2): string[] 
 
 function AttendeeView({ sessionId }: { sessionId: string }) {
   const room = useRoomContext();
-  const [currentLanguage, setCurrentLanguage] = useState("original");
+  const [currentLanguage, setCurrentLanguage] = useState("en");
   const [translatorIdentity, setTranslatorIdentity] = useState<string | null>(
     null
   );
