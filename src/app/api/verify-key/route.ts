@@ -87,12 +87,32 @@ function verifyGeminiKey(
       }
     });
 
-    ws.on("error", () => {
-      done({ ok: false, error: "키 검증에 실패했습니다. 키가 올바른지 확인하세요." });
+    // Gemini가 붙여준 사유(예: "API key not valid")를 그대로 보여주되, 혹시라도
+    // 키 문자열이 섞여 들어오면 지운다(URL의 ?key= 노출 방지 차원의 방어).
+    const sanitize = (raw: string): string => {
+      const s = raw.replace(apiKey, "").trim();
+      return s.length > 200 ? s.slice(0, 200) + "…" : s;
+    };
+
+    ws.on("error", (err: Error) => {
+      // 업그레이드 실패는 보통 "Unexpected server response: 4xx" 형태로 온다.
+      const hint = sanitize(err?.message || "");
+      done({
+        ok: false,
+        error: hint
+          ? `키 검증 실패: ${hint}`
+          : "키 검증에 실패했습니다. 키가 올바른지 확인하세요.",
+      });
     });
 
-    ws.on("close", () => {
-      done({ ok: false, error: "키 검증에 실패했습니다 (연결이 종료됨)." });
+    ws.on("close", (code: number, reason: Buffer) => {
+      const detail = sanitize(reason?.toString() || "");
+      done({
+        ok: false,
+        error: detail
+          ? `키 검증 실패 (${code}): ${detail}`
+          : `키 검증에 실패했습니다 (연결 종료, code ${code}). 키 형식이 'AIza…'인지, 결제(유료 티어)가 켜져 있는지 확인하세요.`,
+      });
     });
   });
 }

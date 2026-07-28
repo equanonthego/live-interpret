@@ -34,8 +34,10 @@ export default function Home() {
   const [analysis, setAnalysis] = useState<PresentationContext | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
-  // 페이지가 뜰 때 API 키 입력창은 항상 비어 있는 상태로 시작한다.
-  // (이전에는 localStorage에 저장된 키를 자동으로 채워 넣었다.)
+  // 발표자가 매번 키를 붙여넣지 않도록, 검증에 성공한 키만 이 브라우저에
+  // 기억해 다음 방문 때 자동으로 채운다. (BYOK — 서버엔 저장되지 않고, 이
+  // 기기 localStorage에만 남는다. 공용 PC라면 아래 '키 지우기'로 삭제.)
+  const GEMINI_KEY_STORAGE = "gemini_api_key";
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [keyStatus, setKeyStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -51,6 +53,29 @@ export default function Home() {
       .then((d) => setPasswordRequired(!!d.passwordRequired))
       .catch((err) => console.error("Failed to check auth status:", err));
   }, []);
+
+  // 지난번 검증에 성공해 저장해 둔 키가 있으면 입력창에 다시 채운다.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(GEMINI_KEY_STORAGE);
+      // 마운트 시 1회 외부 저장소(localStorage)에서 상태를 복원하는 정당한 케이스.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (saved) setGeminiApiKey(saved);
+    } catch {
+      // localStorage 접근 불가(프라이빗 모드 등)면 무시한다.
+    }
+  }, []);
+
+  const forgetGeminiKey = () => {
+    try {
+      localStorage.removeItem(GEMINI_KEY_STORAGE);
+    } catch {
+      // ignore
+    }
+    setGeminiApiKey("");
+    setKeyStatus("idle");
+    setKeyError(null);
+  };
 
   const onKeyChange = (v: string) => {
     setGeminiApiKey(v);
@@ -74,6 +99,12 @@ export default function Home() {
       const data = await res.json();
       if (data.ok) {
         setKeyStatus("ok");
+        // 검증에 성공한 키만 이 기기에 기억한다(다음 방문 시 자동 채움).
+        try {
+          localStorage.setItem(GEMINI_KEY_STORAGE, key);
+        } catch {
+          // 저장 실패(프라이빗 모드 등)는 치명적이지 않으므로 무시한다.
+        }
         // 키 입력 전에 파일을 넣었다면 지금 분석한다.
         if (pdfFile && !analysis && !analyzing) analyzePdf(pdfFile);
       } else {
@@ -251,6 +282,25 @@ export default function Home() {
             </div>
             {keyStatus === "fail" && (
               <p style={{ color: "var(--error)", fontSize: 13, marginTop: 8 }}>{keyError}</p>
+            )}
+            {geminiApiKey.trim() && (
+              <button
+                type="button"
+                onClick={forgetGeminiKey}
+                disabled={loading}
+                style={{
+                  marginTop: 8,
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "var(--fg-secondary)",
+                  fontSize: 12,
+                  textDecoration: "underline",
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                저장된 키 지우기 (공용 PC)
+              </button>
             )}
           </div>
 
