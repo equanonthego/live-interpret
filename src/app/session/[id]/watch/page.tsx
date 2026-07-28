@@ -679,15 +679,15 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
             className={playbackEnabled ? "btn btn-outline" : "btn btn-dark"}
             style={{ flex: 1 }}
           >
-            {playbackEnabled ? "⏸ 소리 끄기" : "🔊 소리 켜기"}
+            {playbackEnabled ? "⏸ Mute audio" : "🔊 Listen"}
           </button>
           <button
             onClick={handleLeave}
             className="btn btn-outline"
             style={{ flexShrink: 0 }}
-            aria-label="방송 나가기"
+            aria-label="Leave broadcast"
           >
-            🚪 나가기
+            🚪 Leave
           </button>
         </div>
       </div>
