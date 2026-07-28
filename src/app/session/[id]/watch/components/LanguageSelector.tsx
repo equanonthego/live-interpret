@@ -18,6 +18,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { SUPPORTED_LANGUAGES, getLanguageByCode } from "@/lib/languages";
+import LanguageWheel from "./LanguageWheel";
 
 interface LanguageSelectorProps {
   sessionId: string;
@@ -28,6 +29,9 @@ interface LanguageSelectorProps {
   ) => void;
   disabled?: boolean;
   allowedLanguages?: string[];
+  maxLanguages?: number;
+  openLanguages?: string[];
+  onCapUpdate?: (openLanguages: string[]) => void;
 }
 
 export default function LanguageSelector({
@@ -36,9 +40,13 @@ export default function LanguageSelector({
   onLanguageChange,
   disabled = false,
   allowedLanguages,
+  maxLanguages = 8,
+  openLanguages,
+  onCapUpdate,
 }: LanguageSelectorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wheelOpen, setWheelOpen] = useState(false);
   const activeLanguageRef = useRef(currentLanguage);
 
   // Keep ref in sync with current language
@@ -67,9 +75,8 @@ export default function LanguageSelector({
     };
   }, [sessionId]);
 
-  const handleChange = useCallback(
-    async (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const langCode = e.target.value;
+  const applyLanguage = useCallback(
+    async (langCode: string) => {
       const previousLanguage = activeLanguageRef.current;
       setError(null);
 
@@ -79,10 +86,7 @@ export default function LanguageSelector({
           fetch("/api/translate", {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId,
-              targetLanguage: previousLanguage,
-            }),
+            body: JSON.stringify({ sessionId, targetLanguage: previousLanguage }),
           }).catch(() => { });
         }
         onLanguageChange("original", null);
@@ -104,6 +108,15 @@ export default function LanguageSelector({
 
         const data = await res.json();
 
+        if (res.status === 409 && data.code === "LANGUAGE_CAP_REACHED") {
+          // 정원 마감: 열린 언어 목록을 즉시 반영하고 안내(폴링을 안 기다림).
+          setError("정원이 찼습니다 — 열려 있는 언어 중에서 선택하세요.");
+          if (Array.isArray(data.openLanguages)) {
+            onCapUpdate?.(data.openLanguages);
+          }
+          return;
+        }
+
         if (!res.ok) {
           throw new Error(data.error || "Translation request failed");
         }
@@ -116,7 +129,7 @@ export default function LanguageSelector({
         setLoading(false);
       }
     },
-    [sessionId, onLanguageChange]
+    [sessionId, onLanguageChange, onCapUpdate]
   );
 
   const currentLang = getLanguageByCode(currentLanguage);
@@ -125,6 +138,9 @@ export default function LanguageSelector({
     ? SUPPORTED_LANGUAGES.filter((lang) => allowedLanguages.includes(lang.code))
     : SUPPORTED_LANGUAGES;
 
+  const open = openLanguages ?? [];
+  const capReached = maxLanguages <= open.length;
+
   return (
     <div style={{ width: "100%" }}>
       <label htmlFor="language-select" className="label" style={{ display: "block", marginBottom: 10 }}>
@@ -132,25 +148,55 @@ export default function LanguageSelector({
       </label>
 
       <div style={{ position: "relative" }}>
-        <select
-          id="language-select"
+        {/* 표시용 트리거: 누르면 휠이 열린다 */}
+        <button
+          type="button"
           className="select-field"
-          value={currentLanguage}
-          onChange={handleChange}
+          onClick={() => setWheelOpen(true)}
           disabled={loading || disabled}
           style={{
-            opacity: (loading || disabled) ? 0.5 : 1,
-            cursor: (loading || disabled) ? "not-allowed" : "pointer",
+            width: "100%",
+            textAlign: "left",
+            opacity: loading || disabled ? 0.5 : 1,
+            cursor: loading || disabled ? "not-allowed" : "pointer",
           }}
         >
-          <option value="original">Original audio</option>
-          <optgroup label="Translations">
-            {visibleLanguages.map((lang) => (
-              <option key={lang.code} value={lang.code}>
-                {lang.name} {lang.flag}
-              </option>
-            ))}
-          </optgroup>
+          {currentLanguage === "original"
+            ? "원본 오디오"
+            : currentLang
+            ? `${currentLang.name} ${currentLang.flag}`
+            : currentLanguage}
+        </button>
+
+        {/* 접근성: 키보드·스크린리더용 네이티브 select(시각적으로만 숨김) */}
+        <select
+          id="language-select"
+          aria-label="Language"
+          value={currentLanguage}
+          onChange={(e) => applyLanguage(e.target.value)}
+          disabled={loading || disabled}
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          <option value="original">원본 오디오</option>
+          {visibleLanguages.map((lang) => (
+            <option
+              key={lang.code}
+              value={lang.code}
+              disabled={capReached && !open.includes(lang.code)}
+            >
+              {lang.name} {lang.flag}
+            </option>
+          ))}
         </select>
 
         {loading && (
@@ -159,6 +205,16 @@ export default function LanguageSelector({
           </div>
         )}
       </div>
+
+      <LanguageWheel
+        open={wheelOpen}
+        languages={visibleLanguages}
+        openLanguages={open}
+        capReached={capReached}
+        value={currentLanguage}
+        onSelect={applyLanguage}
+        onClose={() => setWheelOpen(false)}
+      />
 
       {/* State feedback */}
       <div style={{ marginTop: 10, minHeight: 20 }}>

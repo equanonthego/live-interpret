@@ -110,6 +110,8 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
   };
 
   const [allowedLanguages, setAllowedLanguages] = useState<string[] | undefined>(undefined);
+  const [maxLanguages, setMaxLanguages] = useState(8);
+  const [openLanguages, setOpenLanguages] = useState<string[]>([]);
   const [sessionTitle, setSessionTitle] = useState("");
   const [sessionPresenter, setSessionPresenter] = useState("");
 
@@ -120,6 +122,12 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
         if (res.ok) {
           const data = await res.json();
           setAllowedLanguages(data.allowedLanguages);
+          setMaxLanguages(data.maxLanguages ?? 8);
+          setOpenLanguages(
+            Array.isArray(data.translations)
+              ? data.translations.map((t: { language: string }) => t.language)
+              : []
+          );
           setSessionTitle(data.title || "");
           setSessionPresenter(data.presenter || "");
         }
@@ -128,6 +136,8 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
       }
     }
     fetchSessionDetails();
+    const t = setInterval(fetchSessionDetails, 5000);
+    return () => clearInterval(t);
   }, [sessionId]);
 
   const [fontSize, setFontSize] = useState<number>(() => {
@@ -545,6 +555,9 @@ function AttendeeView({ sessionId }: { sessionId: string }) {
           onLanguageChange={handleLanguageChange}
           disabled={false}
           allowedLanguages={allowedLanguages}
+          maxLanguages={maxLanguages}
+          openLanguages={openLanguages}
+          onCapUpdate={setOpenLanguages}
         />
       </div>
 

@@ -36,6 +36,13 @@ export default function LanguageWheel({
   const [query, setQuery] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
+  // 닫을 때 검색을 비워 다음 오픈이 빈 상태로 시작하게 한다. effect 안에서
+  // setState를 부르면 cascading render가 되므로 이벤트 핸들러에서 처리한다.
+  const handleClose = () => {
+    setQuery("");
+    onClose();
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return languages;
@@ -44,10 +51,9 @@ export default function LanguageWheel({
     );
   }, [languages, query]);
 
-  // 열릴 때: 검색 초기화 + 기기 언어(또는 현재 선택) 위치로 스크롤.
+  // 열릴 때: 기기 언어(또는 현재 선택) 위치로 스크롤.
   useEffect(() => {
     if (!open) return;
-    setQuery("");
     const target =
       (value !== "original" && value) ||
       resolveDeviceLanguage(typeof navigator !== "undefined" ? navigator.language : "") ||
@@ -67,7 +73,7 @@ export default function LanguageWheel({
       role="dialog"
       aria-modal="true"
       aria-label="언어 선택"
-      onClick={onClose}
+      onClick={handleClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -104,7 +110,7 @@ export default function LanguageWheel({
           type="button"
           onClick={() => {
             onSelect("original");
-            onClose();
+            handleClose();
           }}
           className="btn btn-outline"
           style={{
@@ -135,7 +141,7 @@ export default function LanguageWheel({
                 disabled={disabled}
                 onClick={() => {
                   onSelect(lang.code);
-                  onClose();
+                  handleClose();
                 }}
                 style={{
                   display: "flex",
